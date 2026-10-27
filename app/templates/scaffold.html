@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow">COMING NEXT</p><h1>{{ title }}</h1><p class="muted">This module is scaffolded but no personal data has been imported.</p></div><span class="freshness">Not configured</span></div>
+<div class="panel empty-module"><h2>No records yet</h2>
+{% if section=='fitness' %}<p>Future imports: workouts, exercise sets, running sessions, personal records and exercise catalogue with equipment context.</p>
+{% elif section=='health-dashboard' %}<p>Future imports: body measurements, composition scans, sleep, resting heart rate and wellness entries. These records require more restrictive privacy controls.</p>
+{% else %}<p>Future goals will store target, current value, unit, direction, due date and linked metric. No targets have been assumed for you.</p>{% endif %}
+<p>Data ingestion for this module is not yet enabled.</p></div>
+{% endblock %}
