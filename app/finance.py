@@ -1,7 +1,5 @@
 """Exact-money summaries; avoid treating bank credits as income without classification."""
-from datetime import date
 from decimal import Decimal
-from sqlalchemy import func
 from app import db
 from app.models import NetWorthSnapshot, Transaction, AccountValuation, Account
 
