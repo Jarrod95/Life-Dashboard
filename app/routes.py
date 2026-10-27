@@ -7,7 +7,7 @@ from app import db
 from app.models import (ImportRun, NetWorthSnapshot, Transaction, Category, TransactionAudit,
                         BudgetLine, Goal)
 from app.finance import (summary, timeline, spending, transaction_query, transaction_json,
-                         latest_valuations, mortgage_scenario, money)
+                         latest_valuations, mortgage_scenario, money, spending_categories, transaction_years)
 from app.importer import profile_bytes, public_preview, import_bytes
 
 site = Blueprint("site", __name__)
@@ -51,7 +51,7 @@ def finance_page():
                            valuations=latest_valuations(),
                            tx_count=db.session.query(Transaction).count(),
                            categories=Category.query.order_by(Category.name).all(),
-                           budgets=BudgetLine.query.all())
+                           budgets=BudgetLine.query.all(), years=transaction_years())
 
 
 @site.get("/fitness")
@@ -160,6 +160,19 @@ def spending_api():
     if grouping not in {"month", "year", "category", "merchant"}:
         return error("group_by must be month, year, category or merchant")
     return jsonify(data=spending(start, end, grouping))
+
+
+@api.get("/finance/spending/categories")
+def spending_categories_api():
+    start, end = date_args()
+    return jsonify(data=spending_categories(start, end),
+                   from_date=start.isoformat() if start else None,
+                   to_date=end.isoformat() if end else None)
+
+
+@api.get("/finance/spending/years")
+def spending_years_api():
+    return jsonify(data=transaction_years())
 
 
 @api.get("/finance/budget")
