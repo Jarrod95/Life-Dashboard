@@ -12,7 +12,7 @@ from pathlib import Path, PurePosixPath
 from zoneinfo import ZoneInfo
 
 from flask import Blueprint, current_app, jsonify, render_template, request
-from sqlalchemy import func
+from sqlalchemy import or_
 from app import db
 
 SYDNEY = ZoneInfo("Australia/Sydney")
@@ -91,7 +91,10 @@ def as_rows(value):
 
 
 def source_dir():
-    return Path(current_app.config.get("GYMDAY_EXPORT_DIR") or os.getenv("LIFE_GYMDAY_EXPORT_DIR", ""))
+    configured = current_app.config.get("GYMDAY_EXPORT_DIR") or os.getenv("LIFE_GYMDAY_EXPORT_DIR")
+    if not configured:
+        raise ValueError("Configure LIFE_GYMDAY_EXPORT_DIR first")
+    return Path(configured)
 
 
 def archive_candidates(folder):
@@ -292,7 +295,7 @@ def import_latest(force=False):
                     item.failure = raw_set.get("untilFailure") is True
                     db.session.add(item)
         # Full valid snapshots can remove records; preserve missing sessions as inactive.
-        if session_ids:
+        if session_ids and len(session_ids) >= counts["source_sessions"]:
             GymSession.query.filter(~GymSession.id.in_(session_ids)).update({"active": False}, synchronize_session=False)
         # Remove replaced exercise/sets attached to present sessions only after complete parse.
         if se_ids:
@@ -362,7 +365,7 @@ def joined_rows():
     if request.args.get("muscle"):
         # Exact relationship membership checked after retrieval; avoids substring match.
         muscle = request.args["muscle"]
-        q = q.filter(db.or_(GymExercise.primary_muscles.contains(muscle),
+        q = q.filter(or_(GymExercise.primary_muscles.contains(muscle),
                             GymExercise.secondary_muscles.contains(muscle)))
     return q.all()
 
@@ -370,7 +373,7 @@ def joined_rows():
 def e1rm(s):
     if s.weight_kg is None or s.weight_kg <= 0 or s.reps is None or not 1 <= s.reps <= 10:
         return None
-    return s.weight_kg * (1 + (s.reps - 1) / 30) if s.reps == 1 else s.weight_kg * (1 + s.reps / 30)
+    return s.weight_kg if s.reps == 1 else s.weight_kg * (1 + s.reps / 30)
 
 
 def set_volume(s):
@@ -564,7 +567,7 @@ def api_records():
     # Chronological improvements only, excluding ties. A single session can yield one PR.
     best = {}
     prs = []
-    rows = sorted(joined_rows(), key=lambda row: (row[0].started or datetime.min, row[3].ordinal or 0))
+    rows = sorted(joined_rows(), key=lambda row: (row[0].started.replace(tzinfo=None) if row[0].started else datetime.min, row[3].ordinal or 0))
     for session, _, e, s in rows:
         value = e1rm(s) if s.complete and not s.warmup else None
         if value is not None and value > best.get(e.id, 0):
