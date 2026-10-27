@@ -194,7 +194,7 @@ def test_westpac_multi_account_and_income_import(app):
     from app.models import Account
     wb = Workbook()
     sheet = wb.active
-    sheet.title = "Westpac_Transactions_All!"
+    sheet.title = "Transactions_Westpac_All!"
     sheet.append(["Transaction Date", "Amount", "Account Name",
                   "Transaction Description", "Category"])
     sheet.append([date(2026, 1, 12), 3200.10, "Savings", "Salary payroll from employer", ""])
@@ -224,7 +224,7 @@ def test_westpac_debit_credit_headers(app):
     from app.importer import transaction_rows
     wb = Workbook()
     ws = wb.active
-    ws.title = "Westpac_Transactions_All!"
+    ws.title = "Transactions_Westpac_All!"
     ws.append(["Date", "Description", "Account", "Debit", "Credit"])
     ws.append([date(2026, 3, 1), "Groceries", "Everyday", 22.75, None])
     ws.append([date(2026, 3, 2), "Salary", "Everyday", None, 1000])
