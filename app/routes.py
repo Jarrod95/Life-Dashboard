@@ -7,7 +7,7 @@ from app import db
 from app.models import (ImportRun, NetWorthSnapshot, Transaction, Category, TransactionAudit,
                         BudgetLine, Goal)
 from app.finance import (summary, timeline, spending, transaction_query, transaction_json,
-                         latest_valuations, mortgage_scenario, money, spending_categories, transaction_years)
+                         latest_valuations, mortgage_scenario, money, spending_categories, transaction_years, income_audit)
 from app.importer import profile_bytes, public_preview, import_bytes
 
 site = Blueprint("site", __name__)
@@ -173,6 +173,12 @@ def spending_categories_api():
 @api.get("/finance/spending/years")
 def spending_years_api():
     return jsonify(data=transaction_years())
+
+
+@api.get("/finance/income-audit")
+def income_audit_api():
+    """Local-only aggregate source/DB reconciliation; no account details or narratives."""
+    return jsonify(data=income_audit())
 
 
 @api.get("/finance/budget")

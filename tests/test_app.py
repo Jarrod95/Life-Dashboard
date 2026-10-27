@@ -316,3 +316,35 @@ def test_startup_reclassifies_old_westpac_income_without_new_workbook_hash(app):
         assert spending()[0]["income"] == "4000.00"
         assert import_bytes(data, "test.xlsx")["status"] == "unchanged"
         assert ImportRun.query.order_by(ImportRun.id.desc()).first().importer_version == IMPORTER_VERSION
+
+
+def test_salary_backfill_query_without_reimport(app):
+    from app import db
+    from app.finance import spending, spending_categories, income_audit
+    with app.app_context():
+        from openpyxl import Workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Transactions_Westpac_All"
+        ws.append(["Bank Account", "Date", "Narrative", "Debit Amount",
+                   "Credit Amount", "Balance", "Categories", "Serial"])
+        ws.append(["SYNTHETIC", date(2026, 9, 1), "DEPOSIT-SALARY employer",
+                   None, 2500, None, "DEP", None])
+        ws.append(["SYNTHETIC", date(2026, 9, 2), "Coffee",
+                   15, None, "POS", "Food", None])
+        output = io.BytesIO()
+        wb.save(output)
+        import_bytes(output.getvalue(), "fake.xlsx")
+        salary = Transaction.query.filter(
+            Transaction.signed_amount > 0).one()
+        salary.income_flag = False  # Simulate records imported by old classifier.
+        db.session.commit()
+        assert spending()[0]["income"] == "2500.00"
+        assert spending_categories() == [{"category": "Food", "spending": "15.00"}]
+        audit = income_audit()
+        assert audit["westpac_transaction_count"] == 2
+        assert audit["months"][0]["salary_marker_credits"] == 1
+        assert audit["months"][0]["excluded_salary_rows"] == 1
+        response = app.test_client().get("/api/v1/finance/income-audit")
+        assert response.status_code == 200
+        assert response.json["data"]["westpac_transaction_count"] == 2
