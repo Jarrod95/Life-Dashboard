@@ -63,3 +63,12 @@ and avoid interpreting unclassified transfers as income or expenditure.
 did not contain a Westpac sheet, so the real Westpac schema has not yet been
 verified. Inspect preview warnings and reconcile transaction counts before
 trusting reported income or spending.
+
+
+### Verified uploaded Westpac layout
+
+The latest uploaded workbook contains `Transactions_Westpac_All` (no trailing exclamation mark), with these eight headers in order: `Bank Account`, `Date`, `Narrative`, `Debit Amount`, `Credit Amount`, `Balance`, `Categories`, `Serial`. Local read-only structure validation found **947 usable rows**, **3 distinct accounts**, **402 credits**, **545 debits**, and **0 structurally rejected rows**. Of the positive rows, 79 contain the explicit string 'salary'. This does *not* certify that every income/transfer classification is correct.
+
+The exporter has been kept out of the repository. For production, ensure the configured `.env` path points to this newer workbook; the upload filename and Windows filename need not match.
+
+Verify after launching: `/settings/imports` should show a new completed import and the transaction explorer should contain Westpac records. If the file was not changed after a previous successful import, SHA-256 will correctly skip it.
