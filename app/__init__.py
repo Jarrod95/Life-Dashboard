@@ -1,6 +1,7 @@
 """Local-first Flask application factory."""
 import os
 from pathlib import Path
+from dotenv import load_dotenv
 
 from flask import Flask, jsonify
 from flask_migrate import Migrate
@@ -26,6 +27,7 @@ def sqlite_foreign_keys(connection, _record):
 def create_app(test_config=None):
     app = Flask(__name__, instance_relative_config=True)
     root = Path(__file__).resolve().parent.parent
+    load_dotenv(root / ".env", override=False)
     database = os.getenv("LIFE_DATABASE_PATH", "data/life-dashboard.sqlite")
     database_path = Path(database)
     if not database_path.is_absolute():
@@ -58,10 +60,12 @@ def create_app(test_config=None):
         if db.engine.dialect.name == "sqlite":
             with db.engine.connect() as conn:
                 conn.exec_driver_sql("PRAGMA journal_mode=WAL")
-        if os.getenv("LIFE_GYMDAY_IMPORT_ON_STARTUP", "false").lower() == "true" and not app.config.get("TESTING"):
+        if (app.config.get("GYMDAY_EXPORT_DIR") and
+                os.getenv("LIFE_GYMDAY_IMPORT_ON_STARTUP", "true").lower() in ("true", "1", "yes") and
+                not app.config.get("TESTING")):
             try:
                 gymday.import_latest()
-            except (OSError, ValueError, Exception):
+            except Exception:
                 app.logger.exception("Gym Day startup import failed; existing dashboard remains available")
     @app.get("/health")
     def healthcheck():
