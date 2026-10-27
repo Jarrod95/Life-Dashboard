@@ -20,14 +20,13 @@
       <button type="button" data-range="all" class="selected">All</button>
     </div>
   </div>
-  <div id="networth-chart" class="graph" role="img" aria-label="Net worth history line chart"></div>
-  <p class="muted" id="networth-fallback">Interactive history loads locally from the finance API.</p>
+  <div class="chart-frame"><canvas id="networth-chart" aria-label="Net worth history: hover or focus individual dates" role="img"></canvas><div class="chart-tooltip" id="networth-tooltip" role="status" aria-live="polite" hidden></div></div><p class="muted chart-note">Hover or use the keyboard to inspect individual snapshots.</p>
 </div>
 {% endif %}
 {% if section in ['overview','finance','spending'] %}
 <div class="panel">
  <div class="panel-header"><div><h2>Monthly cash flow</h2><p class="muted">Transfers excluded, explicitly classified income separated from credits</p></div></div>
- <div id="spending-chart" class="graph compact" role="img" aria-label="Monthly spending and income chart"></div>
+ <div class="chart-frame compact"><canvas id="spending-chart" aria-label="Monthly income and spending chart" role="img"></canvas><div class="chart-tooltip" id="spending-tooltip" role="status" hidden></div></div>
  {% if not spending %}<p class="empty">No transactions imported. <a href="/settings/imports">Import your workbook</a> to begin.</p>{% endif %}
 </div>
 {% endif %}
@@ -39,6 +38,23 @@
 </tbody></table></div>
 {% endif %}
 {% if section == 'spending' %}
+<div class="panel">
+  <div class="panel-header">
+    <div><h2>Spending by category</h2><p class="muted">Net category expenses, excluding transfers and classified income. Refunds reduce spending.</p></div>
+    <div class="filters chart-filters">
+      <label>Year<select id="category-year" aria-label="Spending year">
+        <option value="all">All years</option>
+        {% for year in years %}<option value="{{ year }}" {{ 'selected' if loop.first }}>{{ year }}</option>{% endfor %}
+      </select></label>
+      <label>Month<select id="category-month" aria-label="Spending month">
+        <option value="all">All months</option>
+        {% for month in range(1, 13) %}<option value="{{ month }}">{{ ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][month-1] }}</option>{% endfor %}
+      </select></label>
+    </div>
+  </div>
+  <div class="chart-frame categories"><canvas id="category-chart" role="img" aria-label="Spending by category horizontal bar chart"></canvas><div class="chart-tooltip" id="category-tooltip" role="status" hidden></div></div>
+  <p id="category-total" class="muted" aria-live="polite"></p>
+</div>
 <div class="panel">
 <div class="panel-header"><h2>Transaction explorer</h2><span class="muted">{{ tx_count }} imported transactions</span></div>
 <form id="transaction-filters" class="filters">
