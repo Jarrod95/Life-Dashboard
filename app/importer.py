@@ -11,14 +11,15 @@ from app import db
 from app.models import (ImportRun, SourceRecord, Transaction, Account, Category,
                         NetWorthSnapshot, AccountValuation)
 
+WESTPAC_SHEET = "Westpac_Transactions_All!"
 YEAR_SHEET = re.compile(r"^Transactions_(\d{4})_NAB$", re.I)
 ALIASES = {
-    "date": {"date", "transaction date", "effective date"},
-    "amount": {"amount", "transaction amount", "debit credit"},
-    "account": {"account number", "account", "card number", "card"},
+    "date": {"date", "transaction date", "effective date", "transaction date", "processed date", "value date"},
+    "amount": {"amount", "transaction amount", "debit credit", "transaction amount", "amount (aud)", "signed amount"},
+    "account": {"account number", "account", "card number", "card", "account name", "account description"},
     "type": {"transaction type", "type"},
-    "description": {"transaction details", "details", "description", "narrative"},
-    "merchant": {"merchant name", "merchant", "payee"},
+    "description": {"transaction details", "details", "description", "narrative", "transaction description", "memo"},
+    "merchant": {"merchant name", "merchant", "payee", "merchant / payee"},
     "category": {"category", "expense category"},
 }
 
@@ -76,12 +77,62 @@ def raw(ws, row, index):
     return row[index].value if index is not None and index < len(row) else None
 
 
+def westpac_rows(ws, epoch):
+    """Parse Westpac multi-account export by headings; never assume positional columns."""
+    rownum, cols = headers(ws)
+    if rownum is None:
+        raise ValueError("Westpac sheet has no recognised Date and Amount headers")
+    records, warnings = [], []
+    amount_col = cols["amount"]
+    # Some Westpac exports have separate Debit/Credit columns instead of Amount.
+    header = [normalize_header(c.value) for c in ws[rownum]]
+    debit = next((i for i, value in enumerate(header) if value in
+                  {"debit", "withdrawal", "withdrawals", "money out"}), None)
+    credit = next((i for i, value in enumerate(header) if value in
+                   {"credit", "deposit", "deposits", "money in"}), None)
+    for row in ws.iter_rows(min_row=rownum + 1):
+        raw_date = raw(ws, row, cols["date"])
+        if raw_date is None:
+            continue
+        try:
+            day = parse_date(raw_date, epoch)
+            if amount_col is not None:
+                signed = amount(raw(ws, row, amount_col))
+            elif debit is not None and credit is not None:
+                debit_value = raw(ws, row, debit)
+                credit_value = raw(ws, row, credit)
+                if debit_value in ("", None) and credit_value in ("", None):
+                    continue
+                signed = (amount(credit_value) if credit_value not in ("", None)
+                          else Decimal("0")) - (abs(amount(debit_value))
+                          if debit_value not in ("", None) else Decimal("0"))
+            else:
+                raise ValueError("Westpac needs Amount or Debit and Credit columns")
+        except (ValueError, TypeError) as exc:
+            warnings.append(f"Westpac row {row[0].row}: {type(exc).__name__}")
+            continue
+        data = {field: raw(ws, row, idx) for field, idx in cols.items()}
+        records.append(dict(
+            sheet=ws.title, row=row[0].row, date=day, amount=signed,
+            account=str(data.get("account") or "Westpac unspecified account").strip(),
+            category=str(data.get("category") or "").strip(),
+            merchant=str(data.get("merchant") or "").strip(),
+            description=str(data.get("description") or "").strip(),
+            type=str(data.get("type") or "").strip(),
+        ))
+    return records, warnings
+
+
 def transaction_rows(wb):
     warnings = []
     records = []
     for ws in wb.worksheets:
         match = YEAR_SHEET.match(ws.title)
         if not match:
+            if ws.title.rstrip("!") == WESTPAC_SHEET.rstrip("!"):
+                westpac, issues = westpac_rows(ws, wb.epoch)
+                records.extend(westpac)
+                warnings.extend(issues)
             continue
         header_row, columns = headers(ws)
         if header_row is None:
@@ -219,7 +270,10 @@ def import_bytes(blob, filename, force=False):
         db.session.flush()
         for rec in profile["transactions"]:
             source_key = key(rec["sheet"], rec["row"])
-            account = get_or_create(Account, display_name=rec["account"] or "Unknown")
+            account_name = rec["account"] or "Unknown"
+            if rec["sheet"].rstrip("!") == WESTPAC_SHEET.rstrip("!"):
+                account_name = "Westpac: " + account_name
+            account = get_or_create(Account, display_name=account_name)
             category = get_or_create(Category, name=rec["category"] or "Uncategorised")
             existing = Transaction.query.filter_by(source_key=source_key).first()
             if existing is None:
@@ -228,9 +282,12 @@ def import_bytes(blob, filename, force=False):
                 created += 1
             else:
                 updated += 1
-            typ = (rec["type"] + " " + rec["category"]).lower()
+            typ = (rec["type"] + " " + rec["category"] + " " + rec["description"]).lower()
             transfer = any(t in typ for t in ("transfer", "credit card payment", "internal"))
-            explicit_income = any(t in typ for t in ("salary", "wages", "income", "interest received"))
+            explicit_income = any(t in typ for t in (
+                "salary", "payroll", "wages", "pay from", "pay deposit",
+                "income", "interest received", "salary credit"
+            ))
             existing.date = rec["date"]
             existing.signed_amount = rec["amount"]
             existing.account_id = account.id
