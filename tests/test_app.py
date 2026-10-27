@@ -6,7 +6,7 @@ from openpyxl import Workbook
 from app import create_app
 from app.finance import mortgage_scenario
 from app.importer import import_bytes, profile_bytes
-from app.models import Transaction, NetWorthSnapshot
+from app.models import Transaction, NetWorthSnapshot, SourceRecord, ImportRun
 
 
 @pytest.fixture
@@ -86,3 +86,32 @@ def test_solarized_source():
     assert "--solarized-base03:#002b36" in css
     assert "--solarized-base3:#fdf6e3" in css
     assert '[data-theme="dark"]' in css
+
+
+def test_source_record_lineage_is_complete_and_reimport_updates_it(app):
+    """Regression: SourceRecord NOT NULL fields must be set before ORM autoflush."""
+    with app.app_context():
+        original = workbook_bytes()
+        result = import_bytes(original, "fixture.xlsx")
+        records = SourceRecord.query.order_by(SourceRecord.row_number).all()
+        assert len(records) == 3
+        assert all(r.source_run_id == result["import_id"] for r in records)
+        assert all(r.sheet == "Transactions_2026_NAB" for r in records)
+        assert {r.row_number for r in records} == {2, 3, 4}
+        assert all(r.payload["date"] and r.payload["amount"] for r in records)
+
+        # Correcting an existing cell must update the source record, not duplicate it.
+        from openpyxl import load_workbook
+        wb = load_workbook(io.BytesIO(original))
+        wb["Transactions_2026_NAB"]["B2"] = -12.75
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        revised = import_bytes(buffer.getvalue(), "fixture.xlsx")
+        assert revised["counts"]["created"] == 0
+        assert revised["counts"]["updated"] == 3
+        assert Transaction.query.count() == 3
+        assert SourceRecord.query.count() == 3
+        assert ImportRun.query.count() == 2
+        assert all(r.source_run_id == revised["import_id"] for r in SourceRecord.query.all())
+        assert Transaction.query.filter_by(date=date(2026, 2, 1)).order_by(
+            Transaction.id).first().signed_amount == Decimal("-12.75")

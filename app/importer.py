@@ -244,7 +244,18 @@ def import_bytes(blob, filename, force=False):
             existing.income_flag = explicit_income and rec["amount"] > 0
             existing.excluded_from_spending = transfer
             existing.source_run_id = run.id
-            lineage = get_or_create(SourceRecord, source_key=source_key)
+            # SourceRecord has NOT NULL lineage fields: populate these before
+            # adding a new record, so an autoflush cannot insert a partial row.
+            lineage = SourceRecord.query.filter_by(source_key=source_key).first()
+            if lineage is None:
+                lineage = SourceRecord(
+                    source_key=source_key,
+                    source_run_id=run.id,
+                    sheet=rec["sheet"],
+                    row_number=rec["row"],
+                    payload={},
+                )
+                db.session.add(lineage)
             lineage.source_run_id = run.id
             lineage.sheet = rec["sheet"]
             lineage.row_number = rec["row"]
