@@ -40,3 +40,11 @@ This is an initial functional release, **not full completion of the supplied spe
 
 ## Verification
 Run `python -m pytest tests/test_gymday.py -q` locally; synthetic tests cover deterministic archive discovery, milliseconds, idempotency, working set maths, filtering and corrupt newest ZIP fallback. **The tests have not been executed in this GitHub-connector environment**, which does not have a local checkout of this branch. Do not mark this PR ready to merge without running tests and reconciling the actual export.
+
+## Automatic import on dashboard launch
+
+The application factory loads the repository-root `.env` before reading configuration. Set `LIFE_GYMDAY_EXPORT_DIR` to the folder containing your downloaded Gym Day ZIP archives. **No separate import command is required.** The dashboard imports the latest valid ZIP when it launches, by default whenever this directory is configured. Set `LIFE_GYMDAY_IMPORT_ON_STARTUP=false` only to turn this off. The importer checks SHA-256 and importer version to avoid unnecessary reimports. A failed startup import logs an error and retains existing data without taking finance routes offline.
+
+The supplied October 21, 2026 ZIP was examined in this change: 776 nested sessions, 5,586 nested session exercises, and 20,072 nested sets, matching flattened source counts, each with unique IDs. It includes 19,541 set units of `kg`, 99 of `km`, and 432 with missing units. `km` and missing units must not be interpreted as lifting kilograms. Source export itself is excluded from version control.
+
+Use `./scripts/Start-Dashboard.ps1` to launch normally. The local server's default port is **5050**, so open `http://127.0.0.1:5050/fitness/strength`. Restart the process after downloading a new ZIP to trigger discovery/import, or use the existing Data & sync page's manual browser refresh as an optional alternative.
