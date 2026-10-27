@@ -270,3 +270,49 @@ def test_real_westpac_header_layout_with_separate_amounts(app):
         assert Transaction.query.filter_by(income_flag=True).count() == 1
         assert Transaction.query.filter_by(transfer_flag=True).count() == 1
         assert import_bytes(buffer.getvalue(), "synthetic.xlsx")["status"] == "unchanged"
+
+
+def test_startup_reclassifies_old_westpac_income_without_new_workbook_hash(app):
+    """Old successful import hashes must not block upgraded classification."""
+    from app.importer import IMPORTER_VERSION
+    from app.finance import spending
+    from app import db
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Transactions_Westpac_All"
+    ws.append(["Bank Account", "Date", "Narrative", "Debit Amount",
+               "Credit Amount", "Balance", "Categories", "Serial"])
+    ws.append(["ACCOUNT_A", date(2026, 3, 1), "DEPOSIT-SALARY Payroll",
+               None, 4000, None, "DEP", None])
+    ws.append(["ACCOUNT_A", date(2026, 3, 2), "Grocery purchase",
+               120, None, None, "PAYMENT", None])
+    ws.append(["ACCOUNT_A", date(2026, 3, 3), "DEPOSIT-OSKO Transfer from savings",
+               None, 3000, None, "DEP", None])
+    stream = io.BytesIO()
+    wb.save(stream)
+    data = stream.getvalue()
+
+    with app.app_context():
+        original = import_bytes(data, "test.xlsx")
+        assert Transaction.query.count() == 3
+        assert spending()[0]["income"] == "4000.00"
+        assert spending()[0]["spending"] == "120.00"
+
+        # Simulate a workbook processed under the previous classification rules.
+        run = db.session.get(ImportRun, original["import_id"])
+        run.importer_version = "1"
+        salary = Transaction.query.filter(
+            Transaction.raw_description.ilike("%SALARY%")).one()
+        salary.income_flag = False
+        db.session.commit()
+
+        revised = import_bytes(data, "test.xlsx")
+        assert revised["status"] == "completed"
+        assert revised["counts"]["created"] == 0
+        assert Transaction.query.count() == 3
+        assert Transaction.query.filter_by(income_flag=True).count() == 1
+        assert spending()[0]["income"] == "4000.00"
+        assert import_bytes(data, "test.xlsx")["status"] == "unchanged"
+        assert ImportRun.query.order_by(ImportRun.id.desc()).first().importer_version == IMPORTER_VERSION
