@@ -55,14 +55,60 @@ async function overview(){
  card("Sessions by ISO week",canvas("gym-weekly"))+card("Training volume by week",canvas("gym-volume"))+
  card("Sets by primary muscle",'<div class="strength-controls"><label for="gym-role">Attribution</label><select id="gym-role"><option value="primary">Primary</option><option value="secondary">Secondary</option></select></div>'+canvas("gym-muscles"))+
  card("Most performed exercises",dataTable(d.top_exercises,[[ "Exercise",r=>esc(r.name) ],["Working sets",r=>fmt(r.sets)]]))+
- card("Training calendar",'<div class="strength-calendar" id="gym-calendar"></div>',"strength-full")+
+ card("Training calendar",'<div class="gym-calendar-toolbar"><button id="gym-calendar-prev" type="button" aria-label="Previous month">‹</button><label for="gym-calendar-month">Month</label><input type="month" id="gym-calendar-month" aria-label="Choose calendar month"><button id="gym-calendar-next" type="button" aria-label="Next month">›</button><span id="gym-calendar-label" aria-live="polite"></span></div><div class="gym-calendar-weekdays" aria-hidden="true"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div><div class="strength-calendar" id="gym-calendar" role="grid" aria-label="Monthly training sessions"></div><p class="muted gym-calendar-legend">Volume = completed working sets × logged external load (kg). Click a workout to view its sets.</p>',"strength-full")+
  '</div>';
  chart("gym-weekly",d.weekly,{x:"week",y:"count",unit:"sessions"});
  chart("gym-volume",vol,{x:"period",y:"volume_kg",mode:"line",unit:"kg"});
  async function drawMuscles(){const r=await get("/muscles",{role:document.getElementById("gym-role").value});chart("gym-muscles",r.data.slice(0,20),{x:"name",y:"sets",unit:"sets"});}
  document.getElementById("gym-role").onchange=()=>drawMuscles().catch(showError);await drawMuscles();
- const cal=document.getElementById("gym-calendar");for(const day of d.calendar){const b=document.createElement("button");b.textContent=day.date.slice(5);b.dataset.count=day.sessions;b.title=fmtDate(day.date)+" · "+day.sessions+" session(s)";b.onclick=()=>location.href="/fitness/strength/history?from="+day.date+"&to="+day.date;cal.appendChild(b);}
- if(!d.calendar.length)cal.textContent="No training sessions recorded for this period.";
+ const cal=document.getElementById("gym-calendar");
+ const picker=document.getElementById("gym-calendar-month");
+ const inSydney=new Intl.DateTimeFormat("en-CA",{timeZone:"Australia/Sydney",year:"numeric",month:"2-digit"}).formatToParts(new Date());
+ const component=name=>inSydney.find(p=>p.type===name).value;
+ const currentMonth=component("year")+"-"+component("month");
+ // The standalone calendar has its own month state; overview analytics filters are independent.
+ picker.value=(state.get("year")&&state.get("month")&&state.get("month")!=="all")
+   ?state.get("year")+"-"+state.get("month").padStart(2,"0"):currentMonth;
+ async function drawCalendar(){
+   const match=/^(\\d{4})-(\\d{2})$/.exec(picker.value);
+   if(!match)return;
+   const y=Number(match[1]),m=Number(match[2]);
+   if(y<1900||y>2200||m<1||m>12)return;
+   const response=await get("/calendar",{year:y,month:m,from:null,to:null,exercise:null,muscle:null,workout:null});
+   const days=new Map(response.data.days.map(d=>[d.date,d]));
+   document.getElementById("gym-calendar-label").textContent=new Intl.DateTimeFormat("en-AU",{month:"long",year:"numeric",timeZone:"UTC"}).format(new Date(Date.UTC(y,m-1,1)));
+   const first=(new Date(Date.UTC(y,m-1,1)).getUTCDay()+6)%7;
+   const count=new Date(Date.UTC(y,m,0)).getUTCDate();
+   cal.replaceChildren();
+   for(let i=0;i<first;i++){const blank=document.createElement("div");blank.className="gym-calendar-outside";blank.setAttribute("aria-hidden","true");cal.appendChild(blank);}
+   for(let day=1;day<=count;day++){
+     const date=picker.value+"-"+String(day).padStart(2,"0");
+     const record=days.get(date);
+     const cell=document.createElement("div");cell.className="gym-calendar-day"+(record?" has-training":"");
+     cell.setAttribute("role","gridcell");cell.setAttribute("aria-label",fmtDate(date)+(record?" - "+record.sessions.length+" workouts":" - no workouts"));
+     const number=document.createElement("span");number.className="gym-calendar-date";number.textContent=String(day);cell.appendChild(number);
+     if(record){
+       for(const session of record.sessions){
+         const item=document.createElement("a");item.className="gym-calendar-session";
+         item.href="/fitness/strength/sessions/"+encodeURIComponent(session.id);
+         const title=document.createElement("strong");title.textContent=session.name;
+         const volume=document.createElement("small");volume.textContent=fmt(session.volume_kg)+" kg";
+         item.append(title,volume);cell.appendChild(item);
+       }
+     }
+     cal.appendChild(cell);
+   }
+ }
+ function moveMonth(change){
+   const [y,m]=picker.value.split("-").map(Number);
+   const next=new Date(Date.UTC(y,m-1+change,1));
+   picker.value=next.toISOString().slice(0,7);
+   drawCalendar().catch(showError);
+ }
+ document.getElementById("gym-calendar-prev").onclick=()=>moveMonth(-1);
+ document.getElementById("gym-calendar-next").onclick=()=>moveMonth(1);
+ picker.onchange=()=>drawCalendar().catch(showError);
+ await drawCalendar();
 }
 async function exercises(){
  root.innerHTML=card("Exercise explorer",'<div class="strength-controls"><input id="gym-search" type="search" placeholder="Search exercises" aria-label="Search exercises"><button id="gym-download">Export CSV</button></div><div id="gym-results"></div><div class="strength-controls"><button id="gym-prev">Previous</button><span id="gym-page"></span><button id="gym-next">Next</button></div>',"strength-full");
