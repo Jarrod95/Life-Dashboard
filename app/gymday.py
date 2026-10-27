@@ -466,7 +466,42 @@ def api_volume():
 
 @gym_api.get("/calendar")
 def api_calendar():
-    return jsonify(data=overview_data()["calendar"])
+    """One requested Sydney-local month, with complete sessions and measured tonnage."""
+    try:
+        year = int(request.args["year"])
+        month = int(request.args["month"])
+        first = date(year, month, 1)
+        last = date(year + (month == 12), month % 12 + 1, 1) - timedelta(days=1)
+    except (KeyError, ValueError, OverflowError):
+        raise ValueError("Calendar requires valid year and month")
+    if not 1900 <= year <= 2200:
+        raise ValueError("Year out of range")
+    sessions = GymSession.query.filter(
+        GymSession.active.is_(True),
+        GymSession.local_date >= first,
+        GymSession.local_date <= last,
+    ).order_by(GymSession.started, GymSession.id).all()
+    ids = [s.id for s in sessions]
+    volumes = defaultdict(float)
+    if ids:
+        rows = db.session.query(GymSessionExercise.session_id, GymSet).join(
+            GymSet, GymSet.session_exercise_id == GymSessionExercise.id
+        ).filter(GymSessionExercise.session_id.in_(ids)).all()
+        for sid, row in rows:
+            volumes[sid] += set_volume(row)
+    days = defaultdict(list)
+    for session in sessions:
+        days[session.local_date.isoformat()].append({
+            "id": session.id,
+            "name": session.name or "Workout",
+            "volume_kg": round(volumes[session.id], 1),
+        })
+    return jsonify(data={
+        "year": year, "month": month,
+        "days": [{"date": day, "sessions": entries,
+                  "total_volume_kg": round(sum(s["volume_kg"] for s in entries), 1)}
+                 for day, entries in sorted(days.items())],
+    }, meta={"timezone": "Australia/Sydney", "volume_definition": "completed non-warmup external kg x reps"})
 
 
 @gym_api.get("/sessions")
