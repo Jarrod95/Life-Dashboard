@@ -128,3 +128,30 @@ def mortgage_scenario(principal, annual_rate, offset, payment, extra=Decimal("0"
         balance += topup
     return {"months": max_months, "total_interest": money(interest_total),
             "remaining_principal": money(p), "paid_off": False}
+
+
+def spending_categories(start=None, end=None):
+    """Aggregated net category expenses, excluding transfers and classified income.
+
+    Positive refunds reduce their category's spending. Retain negative totals if
+    refunds exceed charges so the API never silently loses real financial data.
+    """
+    from app.models import Category
+
+    categories = {c.id: c.name for c in Category.query.all()}
+    totals = {}
+    for txn in transaction_query(start, end, include_transfers=False).all():
+        if txn.income_flag:
+            continue
+        label = categories.get(txn.category_id, "Uncategorised")
+        totals[label] = totals.get(label, Decimal("0")) - txn.signed_amount
+    return [{"category": name, "spending": money(value)}
+            for name, value in sorted(totals.items(), key=lambda x: (-x[1], x[0]))]
+
+
+def transaction_years():
+    from sqlalchemy import extract
+    years = db.session.query(extract("year", Transaction.date)).distinct().order_by(
+        extract("year", Transaction.date).desc()
+    ).all()
+    return [int(row[0]) for row in years if row[0] is not None]
