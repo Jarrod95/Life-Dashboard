@@ -11,6 +11,7 @@ from app import db
 from app.models import (ImportRun, SourceRecord, Transaction, Account, Category,
                         NetWorthSnapshot, AccountValuation)
 
+IMPORTER_VERSION = "2-income-reclassification"
 WESTPAC_SHEET = "Transactions_Westpac_All!"
 YEAR_SHEET = re.compile(r"^Transactions_(\d{4})_NAB$", re.I)
 ALIASES = {
@@ -267,10 +268,11 @@ def import_bytes(blob, filename, force=False):
     if not profile["transactions"] and not profile["snapshots"]:
         raise ValueError("No usable financial data found")
     prior = ImportRun.query.filter_by(sha256=profile["sha256"], status="completed").first()
-    if prior and not force:
+    if prior and prior.importer_version == IMPORTER_VERSION and not force:
         return dict(import_id=prior.id, status="unchanged", counts={"created": 0, "updated": 0})
     run = ImportRun(filename=Path(filename).name, sha256=profile["sha256"],
-                    size_bytes=len(blob), warnings=profile["warnings"], counts={})
+                    size_bytes=len(blob), warnings=profile["warnings"], counts={},
+                    importer_version=IMPORTER_VERSION)
     created = updated = 0
     try:
         db.session.add(run)
@@ -308,7 +310,7 @@ def import_bytes(blob, filename, force=False):
             existing.merchant_raw = rec["merchant"]
             existing.merchant_normalized = rec["merchant"]
             existing.transfer_flag = transfer
-            existing.income_flag = explicit_income and rec["amount"] > 0
+            existing.income_flag = explicit_income and rec["amount"] > 0 and not transfer
             existing.excluded_from_spending = transfer
             existing.source_run_id = run.id
             # SourceRecord has NOT NULL lineage fields: populate these before
