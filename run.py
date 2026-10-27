@@ -1,5 +1,10 @@
-from app import create_app
+"""Start the Flask app on the loopback interface only."""
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+from app import create_app  # noqa: E402
 
 app = create_app()
 
