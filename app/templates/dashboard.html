@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-heading">
+  <div><p class="eyebrow">YOUR NUMBERS, IN CONTEXT</p><h1>{{ title }}</h1>
+    <p class="muted">A clear view of your personal data. Missing values are shown as unavailable.</p></div>
+  {% if data.latest %}<span class="freshness">Latest snapshot {{ data.latest.as_of }}</span>{% else %}<span class="freshness">No imported snapshots</span>{% endif %}
+</div>
+{% if section in ['overview','finance','net-worth'] %}
+<section class="metrics" aria-label="Financial summary">
+  <article class="metric"><span>Reported net worth</span><strong>{{ ('$' ~ '{:,.2f}'.format(data.latest.reported|float)) if data.latest and data.latest.reported else 'Not available' }}</strong><small>Source workbook · {{ data.latest.as_of if data.latest else 'No data' }}</small></article>
+  <article class="metric"><span>Change since previous</span><strong>{{ ('$' ~ '{:,.2f}'.format(data.change|float)) if data.change else 'Not available' }}</strong><small>Compared with prior dated snapshot</small></article>
+  <article class="metric"><span>Reconstructed value</span><strong>{{ ('$' ~ '{:,.2f}'.format(data.latest.reconstructed|float)) if data.latest and data.latest.reconstructed else 'Unreconciled' }}</strong><small>Not substituted for source total</small></article>
+  <article class="metric"><span>Finance data</span><strong>{{ 'Imported' if data.latest or spending else 'Not configured' }}</strong><small>Historical source, read-only</small></article>
+</section>
+<div class="panel chart-panel">
+  <div class="panel-header"><div><h2>Net worth history</h2><p class="muted">Reported workbook totals, by snapshot date</p></div>
+    <div class="range-buttons" aria-label="Chart date range">
+      <button type="button" data-range="1m">1M</button><button type="button" data-range="3m">3M</button>
+      <button type="button" data-range="6m">6M</button><button type="button" data-range="1y">1Y</button>
+      <button type="button" data-range="all" class="selected">All</button>
+    </div>
+  </div>
+  <div id="networth-chart" class="graph" role="img" aria-label="Net worth history line chart"></div>
+  <p class="muted" id="networth-fallback">Interactive history loads locally from the finance API.</p>
+</div>
+{% endif %}
+{% if section in ['overview','finance','spending'] %}
+<div class="panel">
+ <div class="panel-header"><div><h2>Monthly cash flow</h2><p class="muted">Transfers excluded, explicitly classified income separated from credits</p></div></div>
+ <div id="spending-chart" class="graph compact" role="img" aria-label="Monthly spending and income chart"></div>
+ {% if not spending %}<p class="empty">No transactions imported. <a href="/settings/imports">Import your workbook</a> to begin.</p>{% endif %}
+</div>
+{% endif %}
+{% if section == 'net-worth' %}
+<div class="panel"><h2>Latest source holdings</h2><p class="muted">Line items may overlap portfolio aggregates; reconciliation is deliberately not inferred.</p>
+<table><thead><tr><th>Account</th><th>Type</th><th>Category</th><th>Value</th></tr></thead><tbody>
+{% for v in valuations %}<tr><td>{{ v.account }}</td><td>{{ v.kind }}</td><td>{{ v.category }}</td><td>{{ v.amount }}</td></tr>{% else %}
+<tr><td colspan="4">No valuation line items available.</td></tr>{% endfor %}
+</tbody></table></div>
+{% endif %}
+{% if section == 'spending' %}
+<div class="panel">
+<div class="panel-header"><h2>Transaction explorer</h2><span class="muted">{{ tx_count }} imported transactions</span></div>
+<form id="transaction-filters" class="filters">
+ <label>From <input name="from" type="date"></label><label>To <input name="to" type="date"></label>
+ <label>Category <select name="category"><option value="">All categories</option>{% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></label>
+ <label>Search <input name="search" placeholder="Merchant or description"></label>
+ <label class="check"><input name="include_transfers" type="checkbox" value="true"> Include transfers</label>
+ <button type="submit">Apply</button>
+</form>
+<div class="table-scroll"><table><thead><tr><th>Date</th><th>Merchant</th><th>Description</th><th>Amount (AUD)</th><th>Category</th></tr></thead>
+<tbody id="transaction-rows"><tr><td colspan="5">Loading…</td></tr></tbody></table></div>
+<div class="pagination"><button id="tx-prev" type="button">Previous</button><span id="tx-page"></span><button id="tx-next" type="button">Next</button></div>
+</div>
+{% endif %}
+{% if section == 'budget' %}
+<div class="panel"><h2>Budget source</h2><p class="empty">Budget assumptions must be verified against the original workbook input columns before figures can be trusted. No guessed annualisations have been published.</p></div>
+{% endif %}
+{% if section == 'mortgage' %}
+<div class="panel"><h2>Mortgage & offset calculator</h2><p class="muted">Hypothetical scenario only. Enter your current balances and a <strong>monthly</strong> repayment. Annual nominal rate as a decimal (5.64% = 0.0564).</p>
+<form id="mortgage-form" class="filters">
+<label>Loan principal ($)<input type="number" required min="0" step=".01" name="principal" placeholder="Principal"></label>
+<label>Interest rate (decimal)<input type="number" required min="0" max="1" step=".0001" name="annual_rate" placeholder="0.0564"></label>
+<label>Offset ($)<input type="number" required min="0" step=".01" name="offset" value="0"></label>
+<label>Monthly payment ($)<input type="number" required min=".01" step=".01" name="monthly_payment"></label>
+<label>Extra payment ($/mo)<input type="number" min="0" step=".01" name="extra_monthly_payment" value="0"></label>
+<label>Offset top-up ($/mo)<input type="number" min="0" step=".01" name="monthly_offset_topup" value="0"></label>
+<button type="submit">Calculate</button></form><output id="mortgage-result" aria-live="polite"></output></div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en-AU" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>{{ title }} · Life Dashboard</title>
+  <script>document.documentElement.dataset.theme=localStorage.getItem('life-theme')||'light';</script>
+  <link rel="stylesheet" href="{{ url_for('static',filename='css/solarized.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static',filename='css/components.css') }}">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar" aria-label="Primary navigation">
+      <a class="brand" href="/">◉ <span>Life Dashboard</span></a>
+      <p class="nav-heading">PERSONAL</p>
+      <a class="{{ 'active' if section=='overview' }}" href="/">Overview</a>
+      <p class="nav-heading">FINANCES</p>
+      <a class="{{ 'active' if section=='finance' }}" href="/finance">Finance overview</a>
+      <a class="{{ 'active' if section=='net-worth' }}" href="/finance/net-worth">Net worth</a>
+      <a class="{{ 'active' if section=='spending' }}" href="/finance/spending">Spending</a>
+      <a class="{{ 'active' if section=='budget' }}" href="/finance/budget">Budget</a>
+      <a class="{{ 'active' if section=='mortgage' }}" href="/finance/mortgage">Mortgage</a>
+      <p class="nav-heading">LIFE</p>
+      <a class="{{ 'active' if section=='fitness' }}" href="/fitness">Fitness</a>
+      <a class="{{ 'active' if section=='health-dashboard' }}" href="/health-dashboard">Health</a>
+      <a class="{{ 'active' if section=='goals' }}" href="/goals">Goals</a>
+      <p class="nav-heading">SYSTEM</p>
+      <a class="{{ 'active' if section=='imports' }}" href="/settings/imports">Data & imports</a>
+    </aside>
+    <div class="main-wrap">
+      <header class="topbar">
+        <span class="eyebrow">PERSONAL ANALYTICS <span class="slash">/</span> {{ title }}</span>
+        <div class="top-actions">
+          <a href="/settings/imports">Import data</a>
+          <button id="theme-toggle" type="button" aria-label="Switch colour theme">Dark mode</button>
+        </div>
+      </header>
+      <main id="content">
+        {% block content %}{% endblock %}
+      </main>
+      <footer class="footer">Local-first · Data stored on this device · AUD / en-AU</footer>
+    </div>
+  </div>
+  <script defer src="{{ url_for('static',filename='js/theme.js') }}"></script>
+  <script defer src="{{ url_for('static',filename='js/dashboard.js') }}"></script>
+</body>
+</html>

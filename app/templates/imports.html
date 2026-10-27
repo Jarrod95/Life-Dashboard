@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow">DATA OWNERSHIP</p><h1>Data & imports</h1><p class="muted">Preview your source workbook before importing. The source file is never modified.</p></div></div>
+<div class="panel">
+<h2>Import finance workbook</h2>
+<p>Upload your <code>Financial Dashboard.xlsx</code> file. Accepted format: .xlsx, maximum size configured locally.</p>
+<form id="import-form" enctype="multipart/form-data"><label>Workbook <input type="file" name="file" accept=".xlsx"></label>
+<div class="filters"><button type="button" id="preview-import">Preview only</button><button type="button" id="commit-import">Import into local database</button></div></form>
+<pre id="import-result" class="result" aria-live="polite">No import requested.</pre>
+</div>
+<div class="panel"><h2>Import history</h2><div class="table-scroll"><table><thead><tr><th>ID</th><th>File</th><th>Status</th><th>Created</th><th>Updated</th><th>Warnings</th></tr></thead>
+<tbody>{% for r in runs %}<tr><td>{{ r.id }}</td><td>{{ r.filename }}</td><td>{{ r.status }}</td><td>{{ r.counts.get('created', 0) }}</td><td>{{ r.counts.get('updated', 0) }}</td><td>{{ r.warnings|length }}</td></tr>
+{% else %}<tr><td colspan="6">No imports recorded.</td></tr>{% endfor %}</tbody></table></div></div>
+{% endblock %}

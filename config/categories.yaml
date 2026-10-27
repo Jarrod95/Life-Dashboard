@@ -1,0 +1,6 @@
+version: 1
+classification_notes:
+  - "Never assume all positive bank movements are income."
+  - "Internal transfers and card repayments are excluded from ordinary spending."
+  - "User category edits take precedence over spreadsheet reimports."
+rules: []
