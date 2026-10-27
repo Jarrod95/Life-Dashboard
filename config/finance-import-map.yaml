@@ -1,0 +1,14 @@
+version: 1
+transaction_sheet_pattern: '^Transactions_[0-9]{4}_NAB$'
+transaction_header_aliases:
+  date: [Date, Transaction Date, Effective Date]
+  amount: [Amount, Transaction Amount, Debit Credit]
+  account: [Account Number, Account, Card Number, Card]
+  transaction_type: [Transaction Type, Type]
+  details: [Transaction Details, Details, Description, Narrative]
+  category: [Category, Expense Category]
+  merchant: [Merchant Name, Merchant, Payee]
+net_worth_sheet: Net Worth Tracking
+net_worth_date_row: 1
+net_worth_reported_total_row: 2
+net_worth_warning: "Equity and mortgage aggregates require manual verification."
