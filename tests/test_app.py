@@ -3,7 +3,7 @@ from datetime import date
 from decimal import Decimal
 import pytest
 from openpyxl import Workbook
-from app import create_app, db
+from app import create_app
 from app.finance import mortgage_scenario
 from app.importer import import_bytes, profile_bytes
 from app.models import Transaction, NetWorthSnapshot
