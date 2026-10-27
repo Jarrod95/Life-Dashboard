@@ -1,4 +1,5 @@
 """Exact-money summaries; avoid treating bank credits as income without classification."""
+import re
 from decimal import Decimal
 from app import db
 from app.models import NetWorthSnapshot, Transaction, AccountValuation, Account
@@ -71,6 +72,16 @@ def transaction_json(t):
                 excluded=t.excluded_from_spending)
 
 
+def effective_income(t):
+    """Recognise explicit payroll credits even if an older import stored false flags."""
+    if t.signed_amount <= 0 or t.excluded_from_spending or t.transfer_flag:
+        return False
+    if t.income_flag:
+        return True
+    return bool(re.search(r"\\b(salary|payroll|wages)\\b",
+                          t.raw_description or "", re.I))
+
+
 def spending(start=None, end=None, group_by="month"):
     q = transaction_query(start, end, include_transfers=False).all()
     groups = {}
@@ -85,7 +96,7 @@ def spending(start=None, end=None, group_by="month"):
             key = t.merchant_normalized or "Unknown"
         bucket = groups.setdefault(key, {"income": Decimal("0"), "spending": Decimal("0")})
         # Positive values not flagged as income are credits/refunds, reducing spending.
-        if t.income_flag:
+        if effective_income(t):
             bucket["income"] += t.signed_amount
         else:
             bucket["spending"] -= t.signed_amount
@@ -141,7 +152,7 @@ def spending_categories(start=None, end=None):
     categories = {c.id: c.name for c in Category.query.all()}
     totals = {}
     for txn in transaction_query(start, end, include_transfers=False).all():
-        if txn.income_flag:
+        if effective_income(txn):
             continue
         label = categories.get(txn.category_id, "Uncategorised")
         totals[label] = totals.get(label, Decimal("0")) - txn.signed_amount
@@ -175,9 +186,8 @@ def income_audit():
             "excluded_salary_rows": 0,
         })
         line["westpac_rows"] += 1
-        salary = t.signed_amount > 0 and bool(
-            __import__("re").search(r"\\b(salary|payroll|wages)\\b",
-                                      t.raw_description or "", __import__("re").I))
+        salary = t.signed_amount > 0 and bool(re.search(
+            r"\\b(salary|payroll|wages)\\b", t.raw_description or "", re.I))
         if salary:
             line["salary_marker_credits"] += 1
             line["salary_marker_amount"] += t.signed_amount
