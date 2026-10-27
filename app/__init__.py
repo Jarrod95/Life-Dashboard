@@ -37,6 +37,7 @@ def create_app(test_config=None):
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
         MAX_CONTENT_LENGTH=int(os.getenv("LIFE_MAX_UPLOAD_MB", "20")) * 1024 * 1024,
         SOURCE_WORKBOOK=os.getenv("LIFE_FINANCE_XLSX_PATH", ""),
+        GYMDAY_EXPORT_DIR=os.getenv("LIFE_GYMDAY_EXPORT_DIR", ""),
         APPLICATION_ROOT="/",
     )
     if test_config:
@@ -45,15 +46,23 @@ def create_app(test_config=None):
     migrate.init_app(app, db)
     csrf.init_app(app)
     from app import models  # noqa: F401
+    from app import gymday  # noqa: F401
     from app.routes import site, api
     app.register_blueprint(site)
     app.register_blueprint(api)
+    app.register_blueprint(gymday.gym_pages)
+    app.register_blueprint(gymday.gym_api)
     # Initial schema is created for clean local checkouts. Alembic revisions manage later changes.
     with app.app_context():
         db.create_all()
         if db.engine.dialect.name == "sqlite":
             with db.engine.connect() as conn:
                 conn.exec_driver_sql("PRAGMA journal_mode=WAL")
+        if os.getenv("LIFE_GYMDAY_IMPORT_ON_STARTUP", "false").lower() == "true" and not app.config.get("TESTING"):
+            try:
+                gymday.import_latest()
+            except (OSError, ValueError, Exception):
+                app.logger.exception("Gym Day startup import failed; existing dashboard remains available")
     @app.get("/health")
     def healthcheck():
         return jsonify(status="ok", application="Life-Dashboard"), 200
