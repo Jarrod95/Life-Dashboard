@@ -1,5 +1,4 @@
 """Server-rendered pages and same-origin versioned JSON API."""
-import os
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -9,7 +8,7 @@ from app.models import (ImportRun, NetWorthSnapshot, Transaction, Category, Tran
                         BudgetLine, Goal)
 from app.finance import (summary, timeline, spending, transaction_query, transaction_json,
                          latest_valuations, mortgage_scenario, money)
-from app.importer import profile_bytes, public_preview, import_bytes, import_path
+from app.importer import profile_bytes, public_preview, import_bytes
 
 site = Blueprint("site", __name__)
 api = Blueprint("api", __name__, url_prefix="/api/v1")
