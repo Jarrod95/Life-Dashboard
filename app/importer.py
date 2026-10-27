@@ -38,7 +38,14 @@ def headers(ws):
         names = {field: next((i for i, cell in enumerate(row)
                               if normalize_header(cell.value) in choices), None)
                  for field, choices in ALIASES.items()}
-        if names["date"] is not None and names["amount"] is not None:
+        if names["date"] is not None and (
+            names["amount"] is not None or (
+                any(normalize_header(cell.value) in {"debit", "withdrawal", "withdrawals"}
+                    for cell in row)
+                and any(normalize_header(cell.value) in {"credit", "deposit", "deposits"}
+                        for cell in row)
+            )
+        ):
             return row[0].row, names
     return None, {}
 
