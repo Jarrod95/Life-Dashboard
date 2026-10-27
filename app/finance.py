@@ -155,3 +155,49 @@ def transaction_years():
         extract("year", Transaction.date).desc()
     ).all()
     return [int(row[0]) for row in years if row[0] is not None]
+
+
+def income_audit():
+    """Aggregated diagnostic without revealing account numbers or transaction narratives."""
+    from sqlalchemy import func
+    from app.models import ImportRun, SourceRecord
+
+    westpac = db.session.query(Transaction).join(
+        SourceRecord, SourceRecord.source_key == Transaction.source_key
+    ).filter(SourceRecord.sheet.ilike("Transactions_Westpac_All%"))
+    by_month = {}
+    for t in westpac.all():
+        month = t.date.strftime("%Y-%m")
+        line = by_month.setdefault(month, {
+            "westpac_rows": 0, "salary_marker_credits": 0,
+            "salary_marker_amount": Decimal("0"),
+            "classified_income": Decimal("0"), "classified_income_rows": 0,
+            "excluded_salary_rows": 0,
+        })
+        line["westpac_rows"] += 1
+        salary = t.signed_amount > 0 and bool(
+            __import__("re").search(r"\\b(salary|payroll|wages)\\b",
+                                      t.raw_description or "", __import__("re").I))
+        if salary:
+            line["salary_marker_credits"] += 1
+            line["salary_marker_amount"] += t.signed_amount
+            if not t.income_flag:
+                line["excluded_salary_rows"] += 1
+        if t.income_flag and not t.excluded_from_spending:
+            line["classified_income_rows"] += 1
+            line["classified_income"] += t.signed_amount
+    latest = ImportRun.query.filter_by(status="completed").order_by(
+        ImportRun.id.desc()).first()
+    return {
+        "westpac_transaction_count": westpac.count(),
+        "latest_import": {
+            "id": latest.id, "filename": latest.filename,
+            "importer_version": latest.importer_version,
+            "status": latest.status,
+        } if latest else None,
+        "months": [
+            {**v, "month": k, "salary_marker_amount": money(v["salary_marker_amount"]),
+             "classified_income": money(v["classified_income"])}
+            for k, v in sorted(by_month.items())
+        ],
+    }
