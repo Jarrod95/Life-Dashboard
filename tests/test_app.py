@@ -6,7 +6,7 @@ from openpyxl import Workbook
 from app import create_app
 from app.finance import mortgage_scenario
 from app.importer import import_bytes, profile_bytes
-from app.models import Transaction, NetWorthSnapshot, SourceRecord, ImportRun
+from app.models import Transaction, NetWorthSnapshot, SourceRecord, ImportRun, AccountValuation
 
 
 @pytest.fixture
@@ -115,3 +115,32 @@ def test_source_record_lineage_is_complete_and_reimport_updates_it(app):
         assert all(r.source_run_id == revised["import_id"] for r in SourceRecord.query.all())
         assert Transaction.query.filter_by(date=date(2026, 2, 1)).order_by(
             Transaction.id).first().signed_amount == Decimal("-12.75")
+
+
+def test_valuation_insert_and_corrected_snapshot_upsert(app):
+    """Regression: complete NOT NULL valuation fields before database flush."""
+    with app.app_context():
+        original = workbook_bytes()
+        first = import_bytes(original, "fixture.xlsx")
+        valuations = AccountValuation.query.all()
+        assert first["status"] == "completed"
+        assert len(valuations) == 1
+        assert valuations[0].amount_aud == Decimal("500.00")
+        assert valuations[0].kind == "asset"
+        assert valuations[0].category == "cash"
+        assert valuations[0].source_reference
+        snapshot_id = valuations[0].snapshot_id
+        valuation_id = valuations[0].id
+
+        from openpyxl import load_workbook
+        wb = load_workbook(io.BytesIO(original))
+        wb["Net Worth Tracking"]["B12"] = 725.50
+        buf = io.BytesIO()
+        wb.save(buf)
+        result = import_bytes(buf.getvalue(), "fixture.xlsx")
+        assert result["status"] == "completed"
+        assert AccountValuation.query.count() == 1
+        updated = AccountValuation.query.one()
+        assert updated.id == valuation_id
+        assert updated.snapshot_id == snapshot_id
+        assert updated.amount_aud == Decimal("725.50")
