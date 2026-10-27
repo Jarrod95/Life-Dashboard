@@ -46,7 +46,7 @@ or watch for changes while running; restart to sync new workbook changes.
 
 ## Westpac data
 
-A sheet named `Westpac_Transactions_All!` (trailing exclamation optional) is
+A sheet named `Transactions_Westpac_All!` (trailing exclamation optional) is
 processed alongside NAB year sheets. Its parser uses column headings, not fixed
 positions, and expects Date plus either Amount or both Debit and Credit.
 Recognised aliases include Transaction Date, Transaction Description, Account
