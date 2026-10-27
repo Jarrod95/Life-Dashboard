@@ -269,11 +269,30 @@ def import_bytes(blob, filename, force=False):
             obj.reconciliation_delta = None
             for entry in snap["entries"]:
                 account = get_or_create(Account, display_name=f"NW: {entry['row']} {entry['label']}")
-                value = get_or_create(AccountValuation, snapshot_id=obj.id, account_id=account.id)
-                value.amount_aud = entry["value"]
-                value.category = entry["category"]
-                value.kind = "liability" if entry["category"] == "liabilities" else "asset"
-                value.source_reference = f"Net Worth Tracking!{snap['column']}:{entry['row']}"
+                # All NOT NULL fields must be set before the session autoflushes.
+                # get_or_create() flushes immediately and is unsafe for valuations.
+                value = AccountValuation.query.filter_by(
+                    snapshot_id=obj.id, account_id=account.id
+                ).first()
+                if value is None:
+                    value = AccountValuation(
+                        snapshot_id=obj.id,
+                        account_id=account.id,
+                        amount_aud=entry["value"],
+                        kind="liability" if entry["category"] == "liabilities" else "asset",
+                        category=entry["category"],
+                        source_reference=f"Net Worth Tracking!{snap['column']}:{entry['row']}",
+                    )
+                    db.session.add(value)
+                else:
+                    value.amount_aud = entry["value"]
+                    value.category = entry["category"]
+                    value.kind = (
+                        "liability" if entry["category"] == "liabilities" else "asset"
+                    )
+                    value.source_reference = (
+                        f"Net Worth Tracking!{snap['column']}:{entry['row']}"
+                    )
         run.counts = {"created": created, "updated": updated, "snapshots": len(profile["snapshots"])}
         run.status = "completed"
         run.completed_at = datetime.now(timezone.utc)
