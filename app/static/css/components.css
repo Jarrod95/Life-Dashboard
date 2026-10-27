@@ -30,3 +30,23 @@ table{border-collapse:collapse;width:100%;font-size:12px}th,td{border-bottom:1px
 .footer{border-top:1px solid var(--border);padding:18px 36px;color:var(--text-muted);font-size:11px}
 @media(max-width:1000px){.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.shell{grid-template-columns:185px minmax(0,1fr)}main{padding:22px}.topbar{padding:0 22px}}
 @media(max-width:650px){.shell{display:block}.sidebar{position:relative;border-right:0;border-bottom:1px solid var(--border);padding:10px;flex-direction:row;overflow:auto;white-space:nowrap}.sidebar .brand{margin:0 12px 0 0}.sidebar .nav-heading{display:none}.sidebar>a:not(.brand){padding:7px}.topbar{height:auto;min-height:55px;padding:10px 16px}main{padding:20px 14px}.metrics{grid-template-columns:1fr 1fr;gap:8px}.metric{padding:12px}.metric strong{font-size:17px}.panel{padding:15px}.page-heading{align-items:start;flex-direction:column}.panel-header{flex-direction:column}.range-buttons{flex-wrap:wrap}}
+
+/* Canvas drawing buffer follows parent geometry; never stretch a fixed-size SVG. */
+.chart-frame{position:relative;width:100%;height:310px;min-width:0}
+.chart-frame.compact{height:265px}
+.chart-frame.categories{height:400px}
+.chart-frame canvas{display:block;width:100%;height:100%;outline-offset:3px}
+.chart-tooltip{position:absolute;z-index:2;pointer-events:none;max-width:210px;
+  padding:8px 11px;border:1px solid var(--border);border-radius:6px;
+  background:var(--surface);color:var(--text-primary);
+  box-shadow:0 3px 12px rgba(0,0,0,.12);font-size:12px}
+.chart-tooltip[hidden]{display:none}
+.chart-filters{margin:0;align-items:center}
+.chart-filters select{min-width:115px}
+.chart-note{padding-top:9px}
+@media(max-width:650px){
+ .chart-frame{height:250px}
+ .chart-frame.compact{height:215px}
+ .chart-frame.categories{height:360px}
+ .chart-filters{margin-top:10px}
+}

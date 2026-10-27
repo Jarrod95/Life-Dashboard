@@ -7,48 +7,6 @@
    return data;
  };
  const aud=(v)=>v==null?'Unavailable':new Intl.NumberFormat('en-AU',{style:'currency',currency:'AUD'}).format(Number(v));
- const svgNS='http://www.w3.org/2000/svg';
- function drawLine(target,points){
-   if(!target)return;
-   target.replaceChildren();
-   if(points.length<2){target.textContent=points.length?'Only one historical snapshot available.':'No historical data to chart.';return;}
-   const w=850,h=240,p=42,values=points.map(x=>Number(x.reported)),min=Math.min(...values),max=Math.max(...values),span=max-min||1;
-   const el=(tag,attrs)=>{const e=document.createElementNS(svgNS,tag);Object.entries(attrs).forEach(([k,v])=>e.setAttribute(k,v));return e;};
-   const svg=el('svg',{viewBox:`0 0 ${w} ${h}`,preserveAspectRatio:'none','aria-hidden':'true'});
-   for(let i=0;i<=4;i++){const y=p+(h-p*2)*i/4;
-     svg.appendChild(el('line',{x1:p,y1:y,x2:w-p,y2:y,stroke:'var(--chart-grid)'}));
-     const label=el('text',{x:p-7,y:y+4,'text-anchor':'end',fill:'var(--text-muted)','font-size':'11'});
-     label.textContent=aud(max-(max-min)*i/4);svg.appendChild(label);}
-   const path=points.map((pt,i)=>`${i?'L':'M'} ${p+(w-2*p)*i/(points.length-1)} ${h-p-(Number(pt.reported)-min)/span*(h-2*p)}`).join(' ');
-   svg.appendChild(el('path',{d:path,fill:'none',stroke:'var(--accent)','stroke-width':'2.8','vector-effect':'non-scaling-stroke'}));
-   target.appendChild(svg);
-   target.title=`${points[0].as_of}: ${aud(points[0].reported)} → ${points.at(-1).as_of}: ${aud(points.at(-1).reported)}`;
- }
- function drawBars(target,points){
-   if(!target)return;target.replaceChildren();
-   if(!points.length){target.textContent='No classified transaction data available.';return;}
-   const items=points.slice(-12),max=Math.max(1,...items.flatMap(x=>[Math.abs(Number(x.income)),Math.abs(Number(x.spending))]));
-   const chart=document.createElement('div');chart.className='bars';chart.style.cssText='display:flex;align-items:flex-end;height:100%;gap:10px';
-   items.forEach(item=>{const group=document.createElement('div');group.style.cssText='flex:1;min-width:0;display:flex;flex-direction:column;justify-content:flex-end;height:100%;gap:2px';
-    const bars=document.createElement('div');bars.style.cssText='display:flex;gap:3px;align-items:flex-end;height:85%';
-    [['spending','var(--solarized-orange)'],['income','var(--accent)']].forEach(([field,color])=>{
-      const bar=document.createElement('div');bar.style.cssText=`width:50%;height:${Math.max(1,Math.abs(Number(item[field]))/max*100)}%;background:${color};border-radius:3px 3px 0 0`;
-      bar.title=`${item.label} ${field}: ${aud(item[field])}`;bars.appendChild(bar);});
-    const label=document.createElement('span');label.style.cssText='font-size:10px;text-align:center;overflow:hidden;white-space:nowrap';
-    label.textContent=item.label;group.append(bars,label);chart.appendChild(group);});
-   target.appendChild(chart);
- }
- const net=document.getElementById('networth-chart'),cash=document.getElementById('spending-chart');
- let history=[];
- if(net){request('/api/v1/finance/net-worth').then(x=>{history=x.data.filter(v=>v.reported!==null);drawLine(net,history);}).catch(e=>net.textContent=e.message);
-   document.querySelectorAll('[data-range]').forEach(b=>b.addEventListener('click',()=>{
-     document.querySelectorAll('[data-range]').forEach(x=>x.classList.toggle('selected',x===b));
-     const months={'1m':1,'3m':3,'6m':6,'1y':12}[b.dataset.range];
-     if(!months)return drawLine(net,history);
-     const start=new Date();start.setMonth(start.getMonth()-months);
-     drawLine(net,history.filter(x=>new Date(x.as_of)>=start));}));}
- if(cash)request('/api/v1/finance/spending').then(x=>drawBars(cash,x.data)).catch(e=>cash.textContent=e.message);
- document.addEventListener('life-theme-change',()=>{if(net)drawLine(net,history);});
  const filters=document.getElementById('transaction-filters');
  if(filters){let page=1,total=1;
    const load=async()=>{const values=new FormData(filters),params=new URLSearchParams();

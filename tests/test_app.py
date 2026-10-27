@@ -144,3 +144,45 @@ def test_valuation_insert_and_corrected_snapshot_upsert(app):
         assert updated.id == valuation_id
         assert updated.snapshot_id == snapshot_id
         assert updated.amount_aud == Decimal("725.50")
+
+
+def test_category_spending_api_filters_year_and_month_and_excludes_transfers(app):
+    from app.models import Category
+    from app import db
+    with app.app_context():
+        import_bytes(workbook_bytes(), "fixture.xlsx")
+        food = Category.query.filter_by(name="Food").one()
+        client = app.test_client()
+        all_data = client.get("/api/v1/finance/spending/categories").json["data"]
+        assert all_data == [{"category": "Food", "spending": "20.50"}]
+        feb = client.get("/api/v1/finance/spending/categories"
+                         "?from=2026-02-01&to=2026-02-28")
+        assert feb.status_code == 200
+        assert feb.json["data"] == all_data
+        jan = client.get("/api/v1/finance/spending/categories"
+                         "?from=2026-01-01&to=2026-01-31")
+        assert jan.json["data"] == []
+        assert client.get("/api/v1/finance/spending/categories?from=invalid").status_code == 400
+        assert client.get("/api/v1/finance/spending/years").json["data"] == [2026]
+        # Refunds reduce net category spending in their original category.
+        db.session.add(Transaction(
+            source_key="fixture-refund", date=date(2026, 2, 3),
+            signed_amount=Decimal("5.25"), category_id=food.id,
+            raw_description="Refund", excluded_from_spending=False,
+            income_flag=False, transfer_flag=False))
+        db.session.commit()
+        after = client.get("/api/v1/finance/spending/categories"
+                           "?from=2026-02-01&to=2026-02-28").json["data"]
+        assert after == [{"category": "Food", "spending": "15.25"}]
+
+
+def test_chart_ui_mountpoints(client):
+    page = client.get("/finance/spending").get_data(as_text=True)
+    assert 'id="category-year"' in page
+    assert 'id="category-month"' in page
+    assert 'id="category-chart"' in page
+    assert 'id="spending-chart"' in page
+    assert 'js/charts.js' in page
+    networth = client.get("/finance/net-worth").get_data(as_text=True)
+    assert 'id="networth-chart"' in networth
+    assert 'id="networth-tooltip"' in networth
