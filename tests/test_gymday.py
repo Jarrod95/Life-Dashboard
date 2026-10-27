@@ -120,3 +120,23 @@ def test_real_export_unit_classes_are_not_tonnage(tmp_path):
     assert kg(50, "kg") == 50
     assert kg(10, "km") is None
     assert kg(10, None) is None
+
+
+def test_month_calendar_returns_each_day_and_session_tonnage(app, tmp_path):
+    fixture_zip(tmp_path)
+    with app.app_context():
+        import_latest()
+        client = app.test_client()
+        response = client.get("/api/v1/fitness/strength/calendar?year=2026&month=10")
+        assert response.status_code == 200
+        payload = response.get_json()["data"]
+        assert payload["year"] == 2026
+        assert payload["month"] == 10
+        # 20 October UTC morning stays the same Sydney-local date.
+        assert payload["days"] == [{
+            "date": "2026-10-20", "total_volume_kg": 500.0,
+            "sessions": [{"id": "session-1", "name": "Push", "volume_kg": 500.0}]
+        }]
+        assert client.get("/api/v1/fitness/strength/calendar?year=2026&month=11").json["data"]["days"] == []
+        for query in ("year=2026&month=13", "year=2026", "year=x&month=10"):
+            assert client.get("/api/v1/fitness/strength/calendar?" + query).status_code == 400
