@@ -11,7 +11,7 @@ from app import db
 from app.models import (ImportRun, SourceRecord, Transaction, Account, Category,
                         NetWorthSnapshot, AccountValuation)
 
-WESTPAC_SHEET = "Westpac_Transactions_All!"
+WESTPAC_SHEET = "Transactions_Westpac_All!"
 YEAR_SHEET = re.compile(r"^Transactions_(\d{4})_NAB$", re.I)
 ALIASES = {
     "date": {"date", "transaction date", "effective date", "transaction date", "processed date", "value date"},
