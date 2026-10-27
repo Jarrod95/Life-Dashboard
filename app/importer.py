@@ -16,11 +16,11 @@ YEAR_SHEET = re.compile(r"^Transactions_(\d{4})_NAB$", re.I)
 ALIASES = {
     "date": {"date", "transaction date", "effective date", "transaction date", "processed date", "value date"},
     "amount": {"amount", "transaction amount", "debit credit", "transaction amount", "amount (aud)", "signed amount"},
-    "account": {"account number", "account", "card number", "card", "account name", "account description"},
+    "account": {"account number", "account", "card number", "card", "account name", "account description", "bank account"},
     "type": {"transaction type", "type"},
     "description": {"transaction details", "details", "description", "narrative", "transaction description", "memo"},
     "merchant": {"merchant name", "merchant", "payee", "merchant / payee"},
-    "category": {"category", "expense category"},
+    "category": {"category", "expense category", "categories"},
 }
 
 
@@ -40,9 +40,9 @@ def headers(ws):
                  for field, choices in ALIASES.items()}
         if names["date"] is not None and (
             names["amount"] is not None or (
-                any(normalize_header(cell.value) in {"debit", "withdrawal", "withdrawals"}
+                any(normalize_header(cell.value) in {"debit", "debit amount", "withdrawal", "withdrawals"}
                     for cell in row)
-                and any(normalize_header(cell.value) in {"credit", "deposit", "deposits"}
+                and any(normalize_header(cell.value) in {"credit", "credit amount", "deposit", "deposits"}
                         for cell in row)
             )
         ):
@@ -94,9 +94,9 @@ def westpac_rows(ws, epoch):
     # Some Westpac exports have separate Debit/Credit columns instead of Amount.
     header = [normalize_header(c.value) for c in ws[rownum]]
     debit = next((i for i, value in enumerate(header) if value in
-                  {"debit", "withdrawal", "withdrawals", "money out"}), None)
+                  {"debit", "debit amount", "withdrawal", "withdrawals", "money out"}), None)
     credit = next((i for i, value in enumerate(header) if value in
-                   {"credit", "deposit", "deposits", "money in"}), None)
+                   {"credit", "credit amount", "deposit", "deposits", "money in"}), None)
     for row in ws.iter_rows(min_row=rownum + 1):
         raw_date = raw(ws, row, cols["date"])
         if raw_date is None:
@@ -136,7 +136,7 @@ def transaction_rows(wb):
     for ws in wb.worksheets:
         match = YEAR_SHEET.match(ws.title)
         if not match:
-            if ws.title.rstrip("!") == WESTPAC_SHEET.rstrip("!"):
+            if ws.title.strip().rstrip("!").lower() == WESTPAC_SHEET.rstrip("!").lower():
                 westpac, issues = westpac_rows(ws, wb.epoch)
                 records.extend(westpac)
                 warnings.extend(issues)
@@ -278,7 +278,7 @@ def import_bytes(blob, filename, force=False):
         for rec in profile["transactions"]:
             source_key = key(rec["sheet"], rec["row"])
             account_name = rec["account"] or "Unknown"
-            if rec["sheet"].rstrip("!") == WESTPAC_SHEET.rstrip("!"):
+            if rec["sheet"].strip().rstrip("!").lower() == WESTPAC_SHEET.rstrip("!").lower():
                 account_name = "Westpac: " + account_name
             account = get_or_create(Account, display_name=account_name)
             category = get_or_create(Category, name=rec["category"] or "Uncategorised")
@@ -290,7 +290,10 @@ def import_bytes(blob, filename, force=False):
             else:
                 updated += 1
             typ = (rec["type"] + " " + rec["category"] + " " + rec["description"]).lower()
-            transfer = any(t in typ for t in ("transfer", "credit card payment", "internal"))
+            transfer = any(t in typ for t in (
+                "transfer", "tfr ", "cc payment", "credit card payment",
+                "internal", "osko payment"
+            ))
             explicit_income = any(t in typ for t in (
                 "salary", "payroll", "wages", "pay from", "pay deposit",
                 "income", "interest received", "salary credit"
