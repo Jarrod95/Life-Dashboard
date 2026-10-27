@@ -9,7 +9,7 @@ from openpyxl import load_workbook
 from openpyxl.utils.datetime import from_excel
 from app import db
 from app.models import (ImportRun, SourceRecord, Transaction, Account, Category,
-                        NetWorthSnapshot, AccountValuation, BudgetLine)
+                        NetWorthSnapshot, AccountValuation)
 
 YEAR_SHEET = re.compile(r"^Transactions_(\d{4})_NAB$", re.I)
 ALIASES = {
