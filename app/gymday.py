@@ -91,7 +91,7 @@ def as_rows(value):
 
 
 def source_dir():
-    configured = current_app.config.get("GYMDAY_EXPORT_DIR") or os.getenv("LIFE_GYMDAY_EXPORT_DIR")
+    configured = current_app.config.get("GYMDAY_EXPORT_DIR")
     if not configured:
         raise ValueError("Configure LIFE_GYMDAY_EXPORT_DIR first")
     return Path(str(configured).strip().strip('"'))
