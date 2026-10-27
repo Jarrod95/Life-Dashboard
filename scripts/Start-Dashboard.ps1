@@ -14,6 +14,7 @@ if (Test-Path $pidFile) {
 $port = if ($env:LIFE_PORT) { [int]$env:LIFE_PORT } else { 5050 }
 $listener = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
 if ($listener) { throw "Port $port is already occupied. No other process was stopped." }
+Write-Host "Gym Day import runs automatically when the dashboard starts (when an export directory is configured)."
 if ($Foreground) {
   Push-Location $root
   try { & $python (Join-Path $root 'run.py') } finally { Pop-Location }

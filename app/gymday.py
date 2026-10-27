@@ -16,7 +16,7 @@ from sqlalchemy import or_
 from app import db
 
 SYDNEY = ZoneInfo("Australia/Sydney")
-IMPORT_VERSION = "1"
+IMPORT_VERSION = "2"
 gym_pages = Blueprint("gym_pages", __name__)
 gym_api = Blueprint("gym_api", __name__, url_prefix="/api/v1/fitness/strength")
 
@@ -94,7 +94,7 @@ def source_dir():
     configured = current_app.config.get("GYMDAY_EXPORT_DIR") or os.getenv("LIFE_GYMDAY_EXPORT_DIR")
     if not configured:
         raise ValueError("Configure LIFE_GYMDAY_EXPORT_DIR first")
-    return Path(configured)
+    return Path(str(configured).strip().strip('"'))
 
 
 def archive_candidates(folder):
@@ -225,7 +225,8 @@ def load_zip(path):
                 continue
             eid = str(eid)
             exercise = se.get("exercise") if isinstance(se.get("exercise"), dict) else dictionary.get(eid, {"id": eid, "name": "Unknown exercise"})
-            dictionary.setdefault(eid, exercise)
+            if eid not in dictionary or not dictionary[eid].get("name"):
+                dictionary[eid] = exercise
             sets = se.get("workoutSessionSets")
             if sets is None:
                 sets = sets_by_parent.get(str(se["id"]), [])
@@ -249,7 +250,7 @@ def import_latest(force=False):
             obj.name = e.get("name") or "Unknown exercise"
             obj.category = str(e.get("category") or "")
             equipment = e.get("equipmentRequired")
-            obj.equipment = str(equipment)[:150] if equipment is not None else None
+            obj.equipment = ", ".join(str(x.get("name", "")) for x in equipment if isinstance(x, dict))[:150] if isinstance(equipment, list) else (str(equipment)[:150] if equipment else None)
             obj.primary_muscles = muscles(e.get("primaryMuscleGroups"))
             obj.secondary_muscles = muscles(e.get("secondaryMuscleGroups"))
             db.session.add(obj)
@@ -295,7 +296,7 @@ def import_latest(force=False):
                     item.failure = raw_set.get("untilFailure") is True
                     db.session.add(item)
         # Full valid snapshots can remove records; preserve missing sessions as inactive.
-        if session_ids and len(session_ids) >= counts["source_sessions"]:
+        if session_ids and len(session_ids) == counts["source_sessions"] and len(se_ids) == counts["source_session_exercises"] and len(set_ids) == counts["source_sets"]:
             GymSession.query.filter(~GymSession.id.in_(session_ids)).update({"active": False}, synchronize_session=False)
         # Remove replaced exercise/sets attached to present sessions only after complete parse.
         if se_ids:
@@ -305,6 +306,8 @@ def import_latest(force=False):
         if set_ids:
             GymSet.query.filter(GymSet.session_exercise_id.in_(se_ids), ~GymSet.id.in_(set_ids)).delete(synchronize_session=False)
         counts.update(imported_sessions=len(session_ids), imported_session_exercises=len(se_ids), imported_sets=len(set_ids))
+        if (len(session_ids), len(se_ids), len(set_ids)) != (counts["source_sessions"], counts["source_session_exercises"], counts["source_sets"]):
+            raise ValueError("Nested Gym Day records do not reconcile with flat export entity counts; import rolled back")
         db.session.add(run)
         db.session.commit()
         return {"status": "success", "filename": path.name, "counts": counts, "warnings": warnings}
