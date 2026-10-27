@@ -99,3 +99,24 @@ def test_missing_configuration(tmp_path):
                       "GYMDAY_EXPORT_DIR": ""})
     with app.app_context(), pytest.raises(ValueError, match="Configure"):
         import_latest()
+
+
+def test_startup_import_from_dotenv(tmp_path, monkeypatch):
+    fixture_zip(tmp_path)
+    # App factory accepts configuration overrides, and startup import is opt-in by
+    # directory configuration. No manual CLI invocation should be necessary.
+    monkeypatch.setenv("LIFE_GYMDAY_IMPORT_ON_STARTUP", "true")
+    app = create_app({"SQLALCHEMY_DATABASE_URI": "sqlite:///" + str(tmp_path / "startup.sqlite"),
+                      "GYMDAY_EXPORT_DIR": str(tmp_path)})
+    with app.app_context():
+        assert GymSession.query.count() == 1
+        from app.gymday import GymImport
+        assert GymImport.query.filter_by(status="success").count() == 1
+    monkeypatch.delenv("LIFE_GYMDAY_IMPORT_ON_STARTUP", raising=False)
+
+
+def test_real_export_unit_classes_are_not_tonnage(tmp_path):
+    from app.gymday import kg
+    assert kg(50, "kg") == 50
+    assert kg(10, "km") is None
+    assert kg(10, None) is None
