@@ -239,3 +239,34 @@ def test_startup_module_declares_explicit_import_and_preserves_old_data():
     assert "load_dotenv(ROOT / \".env\")" in source
     assert "sync_finances_on_startup()" in source
     assert "import_path(path)" in source
+
+
+def test_real_westpac_header_layout_with_separate_amounts(app):
+    """Matches uploaded Westpac layout, with fabricated, non-private account rows."""
+    from openpyxl import Workbook
+    from app.models import Account
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Transactions_Westpac_All"
+    ws.append(["Bank Account", "Date", "Narrative", "Debit Amount",
+               "Credit Amount", "Balance", "Categories", "Serial"])
+    ws.append(["FAKE_ACCOUNT_A", date(2026, 8, 1), "DEPOSIT-SALARY Example",
+               None, 2500, 5500, "DEP", None])
+    ws.append(["FAKE_ACCOUNT_B", date(2026, 8, 2), "WITHDRAWAL-OSKO PAYMENT CC Payment",
+               200, None, 5300, "PAYMENT", None])
+    ws.append(["FAKE_ACCOUNT_B", date(2026, 8, 3), "Coffee shop",
+               8.50, None, 5291.50, "POS", None])
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    with app.app_context():
+        profile = profile_bytes(buffer.getvalue(), "synthetic.xlsx")
+        assert len(profile["transactions"]) == 3
+        assert [r["amount"] for r in profile["transactions"]] == [
+            Decimal("2500.00"), Decimal("-200.00"), Decimal("-8.50")]
+        imported = import_bytes(buffer.getvalue(), "synthetic.xlsx")
+        assert imported["status"] == "completed"
+        assert Transaction.query.count() == 3
+        assert Account.query.filter_by(display_name="Westpac: FAKE_ACCOUNT_A").count() == 1
+        assert Transaction.query.filter_by(income_flag=True).count() == 1
+        assert Transaction.query.filter_by(transfer_flag=True).count() == 1
+        assert import_bytes(buffer.getvalue(), "synthetic.xlsx")["status"] == "unchanged"
