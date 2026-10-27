@@ -186,3 +186,56 @@ def test_chart_ui_mountpoints(client):
     networth = client.get("/finance/net-worth").get_data(as_text=True)
     assert 'id="networth-chart"' in networth
     assert 'id="networth-tooltip"' in networth
+
+
+def test_westpac_multi_account_and_income_import(app):
+    from app.importer import transaction_rows
+    from openpyxl import Workbook
+    from app.models import Account
+    wb = Workbook()
+    sheet = wb.active
+    sheet.title = "Westpac_Transactions_All!"
+    sheet.append(["Transaction Date", "Amount", "Account Name",
+                  "Transaction Description", "Category"])
+    sheet.append([date(2026, 1, 12), 3200.10, "Savings", "Salary payroll from employer", ""])
+    sheet.append([date(2026, 1, 13), -45.25, "Spending", "Groceries", "Food"])
+    sheet.append([date(2026, 1, 14), -100.00, "Savings", "Internal transfer", "Transfer"])
+    sheet.append([date(2026, 1, 13), -45.25, "Spending", "Groceries", "Food"])
+    stream = io.BytesIO()
+    wb.save(stream)
+    with app.app_context():
+        rows, warnings = transaction_rows(wb)
+        assert not warnings
+        assert len(rows) == 4
+        assert rows[0]["account"] == "Savings"
+        imported = import_bytes(stream.getvalue(), "fixture.xlsx")
+        assert imported["status"] == "completed"
+        assert Transaction.query.count() == 4
+        assert Account.query.filter_by(display_name="Westpac: Savings").one()
+        assert Account.query.filter_by(display_name="Westpac: Spending").one()
+        assert Transaction.query.filter_by(income_flag=True).count() == 1
+        assert Transaction.query.filter_by(excluded_from_spending=True).count() == 1
+        assert import_bytes(stream.getvalue(), "fixture.xlsx")["status"] == "unchanged"
+        assert Transaction.query.count() == 4
+
+
+def test_westpac_debit_credit_headers(app):
+    from openpyxl import Workbook
+    from app.importer import transaction_rows
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Westpac_Transactions_All!"
+    ws.append(["Date", "Description", "Account", "Debit", "Credit"])
+    ws.append([date(2026, 3, 1), "Groceries", "Everyday", 22.75, None])
+    ws.append([date(2026, 3, 2), "Salary", "Everyday", None, 1000])
+    rows, warnings = transaction_rows(wb)
+    assert not warnings
+    assert [r["amount"] for r in rows] == [Decimal("-22.75"), Decimal("1000.00")]
+
+
+def test_startup_module_declares_explicit_import_and_preserves_old_data():
+    from pathlib import Path
+    source = (Path(__file__).resolve().parents[1] / "run.py").read_text()
+    assert "load_dotenv(ROOT / \".env\")" in source
+    assert "sync_finances_on_startup()" in source
+    assert "import_path(path)" in source
