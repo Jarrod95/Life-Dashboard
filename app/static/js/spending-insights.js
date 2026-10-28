@@ -37,21 +37,41 @@
   function renderRecurring(items){el('spending-recurring').replaceChildren(rowTable(['Merchant','Cadence','Occurrences','Last amount','Monthly estimate','Next expected'],items.map(x=>[
     link(x.merchant,'merchant'),x.cadence,x.occurrences,money(x.last_amount_aud),money(x.monthly_equivalent_aud),x.next_expected_date+' (estimated)'
   ])));}
-  function renderOpportunities(items){state.opportunities=items;el('spending-opportunities').replaceChildren(rowTable(['Category','Spend','Transactions','Reason','Scenario saving','Confidence'],items.map(x=>[
-    link(x.category,'category'),money(x.amount_aud),x.transactions,x.rationale,money(x.potential_period_saving_aud),x.confidence
-  ])));renderScenarios(items);}
+  function renderOpportunities(items){
+    state.opportunities=items;
+    const container=el('spending-opportunities');container.replaceChildren();
+    if(!items.length){container.textContent='Not enough classified discretionary purchases to identify opportunities.';recalculate();return;}
+    for(const x of items){
+      const card=document.createElement('article');card.className='spending-opportunity';
+      const header=document.createElement('div');header.className='opportunity-heading';
+      const name=link(x.category,'category');name.classList.add('opportunity-name');
+      const total=document.createElement('strong');total.textContent=money(x.amount_aud);
+      header.append(name,total);
+      const evidence=document.createElement('p');evidence.className='muted';
+      evidence.textContent=x.transactions+' purchases · '+money(x.average_ticket_aud)+' average · '+x.signal+' · confidence: '+x.confidence;
+      const reason=document.createElement('p');reason.textContent=x.rationale;
+      const baseline=document.createElement('p');baseline.className='muted';
+      baseline.textContent=x.baseline_monthly_aud===null?'Historical comparison unavailable: '+x.baseline_label:
+        'Prior 3-month average: '+money(x.baseline_monthly_aud)+'/month'+(x.change_pct!==null?' · change: '+x.change_pct+'%':' · comparison unavailable for partial periods');
+      const line=document.createElement('label');line.className='scenario-row';
+      const label=document.createElement('span');label.textContent='Hypothetical spending reduction';
+      const slider=document.createElement('input');slider.type='range';slider.min='0';slider.max='60';slider.step='5';slider.value='20';slider.dataset.amount=x.amount_aud;
+      const output=document.createElement('output');output.textContent='20%';
+      const saving=document.createElement('strong');saving.className='opportunity-saving';saving.textContent=money(Number(x.amount_aud)*.2);
+      slider.addEventListener('input',()=>{output.textContent=slider.value+'%';saving.textContent=money(Number(x.amount_aud)*Number(slider.value)/100);recalculate();});
+      line.append(label,slider,output);
+      card.append(header,evidence,reason,baseline,line,saving);container.append(card);
+    }
+    recalculate();
+  }
   function periodsObserved(){const p=state.summary?.period;if(!p)return 1;if(p.month)return 1;
     const limit=p.last_transaction_date?new Date(p.last_transaction_date+'T00:00:00Z').getUTCMonth()+1:12;
     return p.is_partial_period?Math.max(1,limit-1):12;
   }
-  function renderScenarios(items){const container=el('savings-scenarios');container.replaceChildren();for(const x of items){const line=document.createElement('label');line.className='scenario-row';const title=document.createElement('span');title.textContent=x.category+' · '+money(x.amount_aud);
-    const slider=document.createElement('input');slider.type='range';slider.min='0';slider.max='60';slider.step='5';slider.value='20';slider.dataset.amount=x.amount_aud;
-    const output=document.createElement('output');output.textContent='20%';slider.addEventListener('input',()=>{output.textContent=slider.value+'%';recalculate();});
-    line.append(title,slider,output);container.append(line);}recalculate();}
-  function recalculate(){let total=0;for(const slider of el('savings-scenarios').querySelectorAll('input'))total+=Number(slider.dataset.amount)*Number(slider.value)/100;
+  function recalculate(){let total=0;for(const slider of el('spending-opportunities').querySelectorAll('input[type="range"]'))total+=Number(slider.dataset.amount)*Number(slider.value)/100;
     const observed=periodsObserved(),monthly=total/observed;
     el('savings-period').textContent=money(total);el('savings-month').textContent=money(monthly);el('savings-year').textContent=money(monthly*12);
-    el('savings-caveat').textContent='Hypothetical scenario based on '+(state.summary?.period.label||'selected period')+'; '+(state.summary?.period.is_partial_period?'partial observations are not reliable annual forecasts.':'annualised values assume repetition, not guaranteed savings.');
+    el('savings-caveat').textContent='Hypothetical scenario based on '+(state.summary?.period.label||'selected period')+'; '+(state.summary?.period.is_partial_period?'partial observations are not reliable annual forecasts.':'annualised figures assume the spending pattern repeats, not guaranteed savings.');
   }
   async function load(){if(!state.year)return;state.abort?.abort();const controller=new AbortController();state.abort=controller;const id=++state.sequence;
     const q=params().toString();el('spending-coverage').textContent='Loading '+state.year+'…';
@@ -70,7 +90,7 @@
   root.addEventListener('change',choose);month.addEventListener('change',choose);
   el('merchant-sort').addEventListener('change',load);
   el('spending-reset').addEventListener('click',()=>{state.year=state.latest;state.month='all';sync();updateURL();load();});
-  el('savings-reset').addEventListener('click',()=>renderScenarios(state.opportunities));
+  el('savings-reset').addEventListener('click',()=>renderOpportunities(state.opportunities));
   window.addEventListener('popstate',()=>{const p=new URLSearchParams(location.search);state.year=root.querySelector('option[value="'+p.get('year')+'"]')?p.get('year'):state.latest;state.month=/^(?:[1-9]|1[0-2])$/.test(p.get('month')||'')?p.get('month'):'all';sync();load();});
   (async()=>{try{const json=await get('/api/v1/finance/spending/periods');const data=json.data;state.latest=String(data.default.year);
     root.replaceChildren(...data.years.map(year=>{const o=document.createElement('option');o.value=String(year);o.textContent=String(year);return o;}));
