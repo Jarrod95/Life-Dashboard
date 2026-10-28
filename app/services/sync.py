@@ -85,6 +85,7 @@ def sync_one(key, force=False, trigger="manual", client=None):
     if current_app.config.get("LIFE_DATA_SOURCE") != "onedrive":
         raise ValueError("Graph sync requires LIFE_DATA_SOURCE=onedrive")
     app = current_app._get_current_object()
+    Path(app.instance_path).mkdir(parents=True, exist_ok=True)
     lock = FileLock(str(Path(app.instance_path) / ("sync-" + key + ".lock")))
     try:
         lock.acquire(timeout=0)
