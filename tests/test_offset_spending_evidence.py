@@ -2,7 +2,15 @@
 from datetime import date
 from decimal import Decimal
 
+import pytest
+from app import create_app
 from app.offset_projection import project_offset
+
+
+@pytest.fixture
+def app(tmp_path):
+    yield create_app({"TESTING": True, "WTF_CSRF_ENABLED": False,
+        "SQLALCHEMY_DATABASE_URI": "sqlite:///" + str(tmp_path / "offset-test.sqlite")})
 
 
 def test_offset_empty_history():
