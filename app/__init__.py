@@ -38,6 +38,7 @@ def create_app(test_config=None):
         MAX_CONTENT_LENGTH=int(os.getenv("LIFE_MAX_UPLOAD_MB", "20")) * 1024 * 1024,
         SOURCE_WORKBOOK=os.getenv("LIFE_FINANCE_XLSX_PATH", ""),
         GYMDAY_EXPORT_DIR=os.getenv("LIFE_GYMDAY_EXPORT_DIR", ""),
+        MFP_DATA_DIR=os.getenv("LIFE_MFP_DATA_DIR") or None,
         APPLICATION_ROOT="/",
     )
     if test_config:
@@ -47,11 +48,14 @@ def create_app(test_config=None):
     csrf.init_app(app)
     from app import models  # noqa: F401
     from app import gymday  # noqa: F401
+    from app import mfp  # noqa: F401
     from app.routes import site, api
     app.register_blueprint(site)
     app.register_blueprint(api)
     app.register_blueprint(gymday.gym_pages)
     app.register_blueprint(gymday.gym_api)
+    app.register_blueprint(mfp.mfp_pages)
+    app.register_blueprint(mfp.mfp_api)
     # Initial schema is created for clean local checkouts. Alembic revisions manage later changes.
     with app.app_context():
         db.create_all()
