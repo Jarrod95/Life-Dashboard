@@ -26,6 +26,8 @@ def sqlite_foreign_keys(connection, _record):
 def create_app(test_config=None):
     app = Flask(__name__, instance_relative_config=True)
     root = Path(__file__).resolve().parent.parent
+    from dotenv import load_dotenv
+    load_dotenv(root / ".env", override=False)
     database = os.getenv("LIFE_DATABASE_PATH", "data/life-dashboard.sqlite")
     database_path = Path(database)
     if not database_path.is_absolute():
@@ -37,6 +39,10 @@ def create_app(test_config=None):
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
         MAX_CONTENT_LENGTH=int(os.getenv("LIFE_MAX_UPLOAD_MB", "20")) * 1024 * 1024,
         SOURCE_WORKBOOK=os.getenv("LIFE_FINANCE_XLSX_PATH", ""),
+        BODY_COMPOSITION_XLSX_PATH=os.getenv("LIFE_BODY_COMPOSITION_XLSX_PATH", ""),
+        BODY_COMPOSITION_IMPORT_ON_STARTUP=os.getenv("LIFE_BODY_COMPOSITION_IMPORT_ON_STARTUP", "true").lower() == "true",
+        BODY_WEIGHT_GOAL_KG=os.getenv("BODY_WEIGHT_GOAL_KG", "84"),
+        BODY_FAT_GOAL_PCT=os.getenv("BODY_FAT_GOAL_PCT", "8"),
         GYMDAY_EXPORT_DIR=os.getenv("LIFE_GYMDAY_EXPORT_DIR", ""),
         MFP_DATA_DIR=os.getenv("LIFE_MFP_DATA_DIR") or None,
         **{key: os.getenv(key, default) for key, default in {
@@ -52,6 +58,7 @@ def create_app(test_config=None):
     from app import models  # noqa: F401
     from app import gymday  # noqa: F401
     from app import mfp  # noqa: F401
+    from app import body_composition
     from app.routes import site, api
     app.register_blueprint(site)
     app.register_blueprint(api)
@@ -59,12 +66,20 @@ def create_app(test_config=None):
     app.register_blueprint(gymday.gym_api)
     app.register_blueprint(mfp.mfp_pages)
     app.register_blueprint(mfp.mfp_api)
+    app.register_blueprint(body_composition.pages)
+    app.register_blueprint(body_composition.api)
     # Initial schema is created for clean local checkouts. Alembic revisions manage later changes.
     with app.app_context():
         db.create_all()
         if db.engine.dialect.name == "sqlite":
             with db.engine.connect() as conn:
                 conn.exec_driver_sql("PRAGMA journal_mode=WAL")
+        if app.config.get("BODY_COMPOSITION_IMPORT_ON_STARTUP") and not app.config.get("TESTING"):
+            try:
+                body_composition.import_source()
+            except Exception:
+                db.session.rollback()
+                app.logger.exception("Body composition import failed; last successful snapshot retained")
         if os.getenv("LIFE_GYMDAY_IMPORT_ON_STARTUP", "false").lower() == "true" and not app.config.get("TESTING"):
             try:
                 gymday.import_latest()
