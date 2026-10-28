@@ -114,3 +114,38 @@ def test_underscore_filename_fallback(app, tmp_path):
         result = mortgage_tracking()
         assert result["status"] == "ok"
         assert result["indicators"]["principal"] == "400000.00"
+
+
+def test_real_tracking_sheet_layout(app, tmp_path):
+    """Match the actual workbook row names with synthetic financial amounts."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Net Worth Tracking"
+    names = {14: "WBC Choice (Offset)", 55: "Rocket Investment Loan",
+             65: "Interest Rate ", 66: "Months Remaining",
+             67: "Annual Calculated Savings", 68: "Total Calculated Savings",
+             69: "Next Calculated Interest Charge"}
+    for row, name in names.items():
+        ws.cell(row, 1, name)
+    for col, month, debt in [(2, 8, 400000), (3, 9, 398000), (4, 10, 396000)]:
+        ws.cell(1, col, date(2026, month, 21))
+        ws.cell(14, col, 60000)
+        ws.cell(55, col, debt)
+        ws.cell(65, col, 0.06)
+        ws.cell(66, col, 320)
+        ws.cell(67, col, 3600)
+        ws.cell(68, col, 96000)
+        ws.cell(69, col, 1680)
+    path = tmp_path / "Financial Dashboard.xlsx"
+    wb.save(path)
+    with app.app_context():
+        app.config["SOURCE_WORKBOOK"] = str(path)
+        result = mortgage_tracking()
+        assert result["status"] == "ok"
+        assert len(result["history"]) == 3
+        assert len(result["projection"]) == 12
+        assert result["indicators"]["principal"] == "396000.00"
+        assert result["indicators"]["offset"] == "60000.00"
+        assert result["indicators"]["annual_calculated_savings"] == "3600.00"
+        assert result["indicators"]["total_calculated_savings"] == "96000.00"
+        assert result["indicators"]["next_month_interest_estimate"] == "1680.00"
