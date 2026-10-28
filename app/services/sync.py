@@ -154,6 +154,7 @@ def sync_one(key, force=False, trigger="manual", client=None):
                 fallback = _local_fallback(key, state)
                 if fallback and fallback.get("status") in ("success", "completed", "unchanged"):
                     state.last_source_type = "local"
+                    state.last_success_at = _now()
                     state.status = "local_fallback"
                     db.session.commit()
                     return {"status": "local_fallback", "run_id": run.id, "remote_error": code}
