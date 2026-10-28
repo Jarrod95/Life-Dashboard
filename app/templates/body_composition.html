@@ -2,7 +2,7 @@
 {% block content %}
 <div class="page-heading"><div><p class="eyebrow">FITNESS / BODY COMPOSITION</p><h1>Body composition</h1><p class="muted">Manual tape measurements, Evolt bioimpedance and DEXA results remain separate measurement methods.</p></div></div>
 <nav class="composition-tabs" aria-label="Body composition sections">
-{% for name,label in [('overview','Overview'),('measurements','Measurements'),('evolt','Evolt'),('dexa','DEXA'),('projections','Projections'),('data','Data health')] %}
+{% for name,label in [('overview','Overview'),('measurements','Measurements'),('evolt','Evolt'),('dexa','DEXA'),('data','Data health')] %}
 <a class="{{ 'active' if view==name else '' }}" href="/fitness/body-composition{{ '' if name=='overview' else '/'~name }}">{{ label }}</a>
 {% endfor %}
 </nav>

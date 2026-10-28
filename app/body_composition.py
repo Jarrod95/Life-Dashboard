@@ -283,7 +283,6 @@ def get_status():
 @pages.get("/fitness/body-composition/measurements")
 @pages.get("/fitness/body-composition/evolt")
 @pages.get("/fitness/body-composition/dexa")
-@pages.get("/fitness/body-composition/projections")
 @pages.get("/fitness/body-composition/data")
 def composition_page():
     section = request.path.rsplit("/", 1)[-1]
