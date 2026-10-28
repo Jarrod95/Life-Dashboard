@@ -102,7 +102,7 @@ def sync_one(key, force=False, trigger="manual", client=None):
         db.session.commit()
         try:
             api = client or OneDriveClient()
-            item, drive_id = resolve(api, key, state if key != "gymday_latest_zip" else None)
+            item, drive_id = resolve(api, key, state)
             state.last_checked_at = _now()
             etag = item.get("eTag")
             if (not force and state.status in ("success", "unchanged") and
