@@ -196,7 +196,7 @@ def load_zip(path):
             raise ValueError("Excessive archive expansion")
         for info in infos:
             p = PurePosixPath(info.filename)
-            if p.is_absolute() or ".." in p.parts or "\\\\" in info.filename:
+            if p.is_absolute() or ".." in p.parts or "\\" in info.filename:
                 raise ValueError("Unsafe archive member path")
         exercises = member_data(z, "Exercise.json", required=True)
         sessions = member_data(z, "WorkoutSession.json", required=True)
