@@ -25,6 +25,8 @@ def upgrade():
             sa.Column("item_id", sa.String(256)),
             sa.Column("etag", sa.String(512)),
             sa.Column("remote_modified_at", sa.String(64)),
+            sa.Column("selected_drive_id", sa.String(256)),
+            sa.Column("selected_item_id", sa.String(256)),
             sa.Column("sha256", sa.String(64)),
             sa.Column("importer_version", sa.String(80)),
             sa.Column("last_checked_at", sa.DateTime(timezone=True)),
