@@ -15,6 +15,9 @@ app = create_app()
 
 def sync_finances_on_startup(application=app):
     """Import changed source bytes exactly once per launch, with safe rollback on errors."""
+    if application.config.get("LIFE_DATA_SOURCE") == "onedrive":
+        logging.info("Graph mode: finance sync delegated to the Graph scheduler/service")
+        return {"status": "scheduled_graph"}
     path = application.config.get("SOURCE_WORKBOOK", "").strip().strip('"')
     if not path:
         logging.info("No LIFE_FINANCE_XLSX_PATH configured; existing data retained")
