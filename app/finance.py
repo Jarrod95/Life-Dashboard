@@ -73,13 +73,13 @@ def transaction_json(t):
 
 
 def effective_income(t):
-    """Recognise explicit payroll credits even if an older import stored false flags."""
-    if t.signed_amount <= 0 or t.excluded_from_spending or t.transfer_flag:
+    """Prefer explicit Westpac payroll markers over stale transfer classifications."""
+    if t.signed_amount <= 0:
         return False
-    if t.income_flag:
+    narrative = " ".join((t.raw_description or "", t.merchant_raw or "", t.raw_type or ""))
+    if re.search(r"\b(salary|payroll|wages)\b", narrative, re.I):
         return True
-    return bool(re.search(r"\b(salary|payroll|wages)\b",
-                          t.raw_description or "", re.I))
+    return bool(t.income_flag and not t.excluded_from_spending and not t.transfer_flag)
 
 
 def spending(start=None, end=None, group_by="month"):
