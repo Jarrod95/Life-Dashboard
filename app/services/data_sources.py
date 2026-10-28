@@ -11,10 +11,12 @@ SOURCES = {
                          "Documents/Finance & Work/Tracking Spreadsheets/Financial Dashboard.xlsx"),
     "body_composition_workbook": ("LIFE_BODY_COMPOSITION_ONEDRIVE_PATH",
                                   "Documents/Fitness & Health/Body Composition.xlsx"),
+    "mfp_exports": ("LIFE_MFP_ONEDRIVE_DIR",
+                    "Documents/Codebases/sandbox-scripts/fitness_health/myfitnesspal/data"),
     "gymday_latest_zip": ("LIFE_GYMDAY_ONEDRIVE_DIR",
                           "Documents/Codebases/sandbox-scripts/fitness_health/gymday/data"),
 }
-LIMITS = {"finance_workbook": 30_000_000, "body_composition_workbook": 30_000_000,
+LIMITS = {"mfp_exports": 50_000_000, "finance_workbook": 30_000_000, "body_composition_workbook": 30_000_000,
           "gymday_latest_zip": 90_000_000}
 
 

@@ -18,6 +18,11 @@ def register_cli(app):
             drive = client.drive()
             click.echo("Microsoft account: authenticated; personal drive: accessible")
             for key in SOURCES:
+                if key == "mfp_exports":
+                    from app.services.mfp_exports import discover
+                    _, files, _ = discover(client)
+                    click.echo(f"{key}: accessible ({len(files)} CSV exports)")
+                    continue
                 item, _ = resolve(client, key)
                 click.echo(f"{key}: accessible ({'folder' if 'folder' in item else 'file'})")
         except Exception as exc:

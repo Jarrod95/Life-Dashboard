@@ -79,7 +79,103 @@ def _local_fallback(key, state):
     return None
 
 
+
+def sync_mfp(force=False, trigger="manual", client=None):
+    """Refresh MFP managed CSV cache from a complete OneDrive export set."""
+    from app.services.mfp_exports import discover, consolidate
+    import tempfile
+    import shutil
+    key = "mfp_exports"
+    root = Path(current_app.instance_path)
+    root.mkdir(parents=True, exist_ok=True)
+    lock = FileLock(str(root / "sync-mfp.lock"))
+    try:
+        lock.acquire(timeout=0)
+    except Timeout:
+        return {"status": "already_running", "source_key": key}
+    try:
+        state = DataSourceState.query.filter_by(source_key=key).first()
+        if state is None:
+            state = DataSourceState(source_key=key)
+            db.session.add(state)
+        run = SyncRun(source_key=key, trigger=trigger)
+        db.session.add(run)
+        db.session.commit()
+        try:
+            api = client or OneDriveClient()
+            drive, items, fingerprint = discover(api, state)
+            state.last_checked_at = _now()
+            target = root / "mfp-graph-cache"
+            if (not force and state.sha256 == fingerprint and
+                    state.status in ("success", "unchanged") and target.is_dir() and
+                    all((target / name).is_file() for name in __import__(
+                        "app.services.mfp_exports", fromlist=["OUTPUTS"]).OUTPUTS.values())):
+                run.status = state.status = "unchanged"
+                run.finished_at = _now()
+                db.session.commit()
+                return {"status": "unchanged", "run_id": run.id}
+            total = 0
+            files = []
+            for item, kind in items:
+                raw = api.download(drive, item["id"], max_bytes=50_000_000)
+                total += len(raw)
+                if total > 200_000_000:
+                    raise ValueError("Combined MFP exports exceed 200 MB")
+                files.append((kind, raw))
+            contents, counts = consolidate(files)
+            stage = Path(tempfile.mkdtemp(prefix="mfp-stage-", dir=root))
+            try:
+                for name, raw in contents.items():
+                    (stage / name).write_bytes(raw)
+                # Windows replacement of a nonempty folder is not atomic. Keep
+                # the previous complete dataset as a rollback snapshot.
+                previous = root / "mfp-graph-cache.previous"
+                if previous.exists():
+                    shutil.rmtree(previous)
+                if target.exists():
+                    target.rename(previous)
+                try:
+                    stage.rename(target)
+                except Exception:
+                    if previous.exists():
+                        previous.rename(target)
+                    raise
+                if previous.exists():
+                    shutil.rmtree(previous)
+            finally:
+                if stage.exists():
+                    shutil.rmtree(stage)
+            from app import mfp
+            mfp._cache.clear()
+            state.sha256 = fingerprint
+            state.last_source_type = state.provider = "onedrive"
+            state.importer_version = "mfp-csv-bundle-1"
+            state.last_success_at = _now()
+            state.status = run.status = "success"
+            state.last_error_code = state.last_error_summary = None
+            run.bytes_downloaded = total
+            run.records_imported = sum(counts.values())
+            run.finished_at = _now()
+            db.session.commit()
+            return {"status": "success", "run_id": run.id, "counts": counts}
+        except Exception as exc:
+            db.session.rollback()
+            state = DataSourceState.query.filter_by(source_key=key).one()
+            run = db.session.get(SyncRun, run.id)
+            code = getattr(exc, "code", "import_failed")
+            state.status = code
+            state.last_error_code = run.error_code = code
+            state.last_error_summary = run.error_summary = "MFP sync failed; previous exports retained"
+            run.status = "failed"
+            run.finished_at = _now()
+            db.session.commit()
+            return {"status": "failed", "run_id": run.id, "error_code": code}
+    finally:
+        lock.release()
+
 def sync_one(key, force=False, trigger="manual", client=None):
+    if key == "mfp_exports":
+        return sync_mfp(force=force, trigger=trigger, client=client)
     if key not in SOURCES:
         raise ValueError("Unknown source key")
     if current_app.config.get("LIFE_DATA_SOURCE") != "onedrive":
