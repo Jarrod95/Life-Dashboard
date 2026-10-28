@@ -2,6 +2,7 @@
 from __future__ import annotations
 import csv
 import os
+import math
 from collections import defaultdict
 from datetime import date, timedelta
 from pathlib import Path
@@ -118,6 +119,66 @@ def missing(e):
     return jsonify(error={"message": str(e)}), 404
 
 
+def weight_projection(values, horizon=90):
+    """Robust recent-trend extrapolation, not a physiologic prediction."""
+    if len(values) < 7:
+        return {"points": [], "method": "insufficient_data", "days": horizon}
+    end = date.fromisoformat(values[-1]["date"])
+    # Use up to 60 calendar days of recent measurements; daily duplicates are averaged.
+    recent = [r for r in values if (end - date.fromisoformat(r["date"])).days <= 60]
+    by_day = defaultdict(list)
+    for row in recent:
+        by_day[row["date"]].append(row["weight_kg"])
+    daily = sorted((date.fromisoformat(d), sum(w) / len(w)) for d, w in by_day.items())
+    if len(daily) < 7 or (daily[-1][0] - daily[0][0]).days < 14:
+        return {"points": [], "method": "insufficient_data", "days": horizon}
+    # Least-squares regression against calendar days, using 7-measurement averages
+    # to dampen transient water-weight fluctuations.
+    ys = [sum(v for _, v in daily[max(0, i-6):i+1]) / len(daily[max(0, i-6):i+1])
+          for i in range(len(daily))]
+    xs = [(d-daily[0][0]).days for d, _ in daily]
+    mx = sum(xs)/len(xs)
+    my = sum(ys)/len(ys)
+    denom = sum((x-mx)**2 for x in xs)
+    slope = sum((x-mx)*(y-my) for x,y in zip(xs,ys))/denom if denom else 0
+    # Capping the estimated slope avoids absurd projections from volatile periods.
+    slope = max(-0.15, min(0.15, slope))
+    anchor_weight = sum(v for _, v in daily[-min(7,len(daily)):])/min(7,len(daily))
+    # Residual deviations inform a descriptive uncertainty ribbon, not calibrated CI.
+    residuals = [y - (my+slope*(x-mx)) for x,y in zip(xs,ys)]
+    spread = math.sqrt(sum(r*r for r in residuals)/len(residuals))
+    points = []
+    for ahead in range(0,horizon+1,7):
+        d = end + timedelta(days=ahead)
+        prediction = max(0, anchor_weight+slope*ahead)
+        band = max(.5,spread) * math.sqrt(1+ahead/30)
+        points.append({"date": d.isoformat(), "weight_kg": round(prediction, 2),
+                       "lower_kg": round(max(0,prediction-band),2),
+                       "upper_kg": round(prediction+band,2)})
+    if points[-1]["date"] != (end+timedelta(days=horizon)).isoformat():
+        ahead=horizon; prediction=max(0,anchor_weight+slope*ahead)
+        band=max(.5,spread)*math.sqrt(1+ahead/30)
+        points.append({"date":(end+timedelta(days=ahead)).isoformat(),
+                       "weight_kg":round(prediction,2),"lower_kg":round(max(0,prediction-band),2),
+                       "upper_kg":round(prediction+band,2)})
+    return {"points":points, "method":"recent_60_day_smoothed_linear_trend",
+            "days":horizon,"slope_kg_per_week":round(slope*7,3),
+            "note":"Illustrative extrapolation of recent measurements, not a medical or guaranteed forecast. Shaded range reflects historical variation, not a calibrated confidence interval."}
+
+
+def nutrition_goals():
+    keys = {"calories": ("MFP_CALORIE_GOAL",1800), "carbs_g": ("MFP_CARB_GOAL",73),
+            "fat_g": ("MFP_FAT_GOAL",60), "protein_g": ("MFP_PROTEIN_GOAL",203)}
+    goals={}
+    for name,(env,default) in keys.items():
+        try:
+            val = float(current_app.config.get(env,default))
+        except (ValueError, TypeError):
+            val=default
+        goals[name]=val if math.isfinite(val) and val>0 else default
+    return goals
+
+
 @mfp_api.get("/weight")
 def weight_api():
     data = sorted(filtered("weight"), key=lambda r: r["date"])
@@ -137,6 +198,7 @@ def weight_api():
     for r in values:
         months[r["date"][:7]].append(r["weight_kg"])
     return jsonify(data={"summary": summary, "history": trend,
+                         "projection": weight_projection(values),
                          "monthly": [{"month": m, "average_kg": avg(v), "min_kg": min(v), "max_kg": max(v)}
                                      for m, v in sorted(months.items())]},
                    meta={"source": FILES["weight"], "unit": "kg"})
@@ -178,7 +240,7 @@ def food_api():
     if page < 1 or not 1 <= size <= 200:
         raise ValueError("page >= 1 and page_size must be 1–200")
     foods.sort(key=lambda r: (r["date"], r.get("meal") or "", r.get("food") or ""), reverse=True)
-    return jsonify(data={"summary": summary, "daily": daily, "meals": [
+    return jsonify(data={"summary": summary, "goals": nutrition_goals(), "daily": daily, "meals": [
         {"meal": k, **{metric: round(v.get(metric, 0), 2) for metric in metrics}} for k, v in sorted(by_meal.items())],
         "top_foods": [{"food": name, **values} for name, values in
                       sorted(top.items(), key=lambda x: x[1]["count"], reverse=True)[:30]],

@@ -39,6 +39,9 @@ def create_app(test_config=None):
         SOURCE_WORKBOOK=os.getenv("LIFE_FINANCE_XLSX_PATH", ""),
         GYMDAY_EXPORT_DIR=os.getenv("LIFE_GYMDAY_EXPORT_DIR", ""),
         MFP_DATA_DIR=os.getenv("LIFE_MFP_DATA_DIR") or None,
+        **{key: os.getenv(key, default) for key, default in {
+            "MFP_CALORIE_GOAL": "1800", "MFP_CARB_GOAL": "73",
+            "MFP_FAT_GOAL": "60", "MFP_PROTEIN_GOAL": "203"}.items()},
         APPLICATION_ROOT="/",
     )
     if test_config:

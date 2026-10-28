@@ -54,3 +54,29 @@ def test_search_meal_pagination_and_errors(client):
     assert r.json["data"]["entries"][0]["food"] == "Oats"
     assert client.get("/api/v1/fitness/mfp/food?page_size=500").status_code == 400
     assert client.get("/api/v1/fitness/mfp/food?from=2026-05-02&to=2026-04-01").status_code == 400
+
+
+def test_environment_nutrition_goals(client):
+    app = client.application
+    app.config.update(MFP_CALORIE_GOAL="1800", MFP_CARB_GOAL="73",
+                      MFP_FAT_GOAL="60", MFP_PROTEIN_GOAL="203")
+    goals = client.get("/api/v1/fitness/mfp/food").json["data"]["goals"]
+    assert goals == {"calories": 1800.0, "carbs_g": 73.0,
+                     "fat_g": 60.0, "protein_g": 203.0}
+    app.config["MFP_PROTEIN_GOAL"] = "invalid"
+    assert client.get("/api/v1/fitness/mfp/food").json["data"]["goals"]["protein_g"] == 203
+
+
+def test_weight_projection_with_sufficient_recent_history():
+    from app.mfp import weight_projection
+    from datetime import date, timedelta
+    start = date(2026, 8, 1)
+    data = [{"date": (start+timedelta(days=i)).isoformat(), "weight_kg": 95-i*.07}
+            for i in range(60)]
+    projection = weight_projection(data)
+    assert projection["days"] == 90
+    assert len(projection["points"]) >= 14
+    assert projection["points"][-1]["date"] == (start+timedelta(days=149)).isoformat()
+    assert projection["points"][-1]["weight_kg"] < projection["points"][0]["weight_kg"]
+    assert all(r["lower_kg"] <= r["weight_kg"] <= r["upper_kg"] for r in projection["points"])
+    assert weight_projection(data[:5])["points"] == []
