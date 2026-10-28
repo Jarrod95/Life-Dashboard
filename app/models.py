@@ -159,6 +159,8 @@ class DataSourceState(db.Model):
     item_id = db.Column(db.String(256))
     etag = db.Column(db.String(512))
     remote_modified_at = db.Column(db.String(64))
+    selected_drive_id = db.Column(db.String(256))
+    selected_item_id = db.Column(db.String(256))
     sha256 = db.Column(db.String(64))
     importer_version = db.Column(db.String(80))
     last_checked_at = db.Column(db.DateTime(timezone=True))
