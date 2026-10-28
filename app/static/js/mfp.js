@@ -28,11 +28,11 @@ function plot(id,series,{x="date",y="value",secondary=null,unit="",mode="line",g
   const rect=canvasEl.getBoundingClientRect(),w=rect.width,h=rect.height;if(!w||!h)return;
   const dpr=devicePixelRatio||1;canvasEl.width=Math.round(w*dpr);canvasEl.height=Math.round(h*dpr);
   const c=canvasEl.getContext("2d");c.scale(dpr,dpr);c.clearRect(0,0,w,h);
-  if(!valid.length){c.fillStyle=css("--text-muted");c.fillText("No logged data in this period",18,35);return;}
+  if(!valid.length){c.fillStyle=css("--text-primary");c.fillText("No logged data in this period",18,35);return;}
   const left=56,right=18,top=18,bottom=42,iw=w-left-right,ih=h-top-bottom;
   const values=valid.flatMap(r=>[Number(r[y]),...(secondary&&r[secondary]!=null?[Number(r[secondary])]:[])]);if(goal!=null&&Number.isFinite(goal))values.push(goal);
   let min=Math.min(...values),max=Math.max(...values);const pad=Math.max((max-min)*.12,Math.abs(max)*.025,.25);min=Math.max(0,min-pad);max+=pad;
-  c.strokeStyle=css("--chart-grid");c.fillStyle=css("--text-muted");c.font="11px system-ui";
+  c.strokeStyle=css("--chart-grid");c.fillStyle=css("--text-primary");c.font="11px system-ui";
   for(let i=0;i<=4;i++){const yy=top+ih*i/4,v=max-(max-min)*i/4;c.beginPath();c.moveTo(left,yy);c.lineTo(w-right,yy);c.stroke();c.fillText(number(v),4,yy+3);}
   const pointsFor=field=>valid.map((r,i)=>({x:left+(i+.5)*iw/valid.length,y:top+ih*(max-Number(r[field]??r[y]))/(max-min),r}));
   const renderLine=(field,color,dashed=false)=>{
@@ -44,7 +44,7 @@ function plot(id,series,{x="date",y="value",secondary=null,unit="",mode="line",g
   points=pointsFor(y);
   if(mode==="bar"){const bar=Math.max(1,Math.min(24,iw/valid.length*.75));points.forEach(pt=>{c.fillStyle=css("--accent");c.fillRect(pt.x-bar/2,pt.y,bar,top+ih-pt.y);});}
   else{renderLine(y,"--accent");if(secondary)renderLine(secondary,"--solarized-orange",true);}
-  if(goal!=null&&Number.isFinite(goal)){const yy=top+ih*(max-goal)/(max-min);c.beginPath();c.strokeStyle=css("--solarized-orange")||"#cb4b16";c.setLineDash([6,4]);c.moveTo(left,yy);c.lineTo(w-right,yy);c.stroke();c.setLineDash([]);c.fillStyle=css("--solarized-orange")||"#cb4b16";c.textAlign="right";c.fillText("Goal "+number(goal)+" "+unit,w-right-3,Math.max(11,yy-5));}
+  if(goal!=null&&Number.isFinite(goal)){const yy=top+ih*(max-goal)/(max-min);c.beginPath();c.strokeStyle=css("--solarized-orange")||"#cb4b16";c.setLineDash([6,4]);c.moveTo(left,yy);c.lineTo(w-right,yy);c.stroke();c.setLineDash([]);c.fillStyle=css("--text-primary")||"#002b36";c.textAlign="right";c.fillText("Goal "+number(goal)+" "+unit,w-right-3,Math.max(11,yy-5));}
   c.textAlign="center";const step=Math.max(1,Math.ceil(points.length/7));points.forEach((pt,i)=>{if(i%step===0)c.fillText(String(pt.r[x]).slice(-7),pt.x,h-15);});
  };
  const focus=i=>{if(!points.length)return;selected=Math.max(0,Math.min(i,points.length-1));const r=points[selected].r;hint.textContent=r[x]+" · "+number(r[y])+" "+unit+(secondary&&r[secondary]!=null?" · 7-day average: "+number(r[secondary]):"");};
