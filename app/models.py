@@ -147,3 +147,40 @@ class Goal(db.Model):
     due_date = db.Column(db.Date)
     direction = db.Column(db.String(12), default="increase")
     status = db.Column(db.String(20), default="active")
+
+ 
+class DataSourceState(db.Model):
+    """Last successfully imported revision of a logical source."""
+    __tablename__ = "data_source_states"
+    id = db.Column(db.Integer, primary_key=True)
+    source_key = db.Column(db.String(64), unique=True, nullable=False)
+    provider = db.Column(db.String(24), nullable=False, default="onedrive")
+    drive_id = db.Column(db.String(256))
+    item_id = db.Column(db.String(256))
+    etag = db.Column(db.String(512))
+    remote_modified_at = db.Column(db.String(64))
+    selected_drive_id = db.Column(db.String(256))
+    selected_item_id = db.Column(db.String(256))
+    sha256 = db.Column(db.String(64))
+    importer_version = db.Column(db.String(80))
+    last_checked_at = db.Column(db.DateTime(timezone=True))
+    last_success_at = db.Column(db.DateTime(timezone=True))
+    last_error_code = db.Column(db.String(64))
+    last_error_summary = db.Column(db.String(256))
+    status = db.Column(db.String(32), nullable=False, default="not_synced")
+    last_source_type = db.Column(db.String(24))
+
+
+class SyncRun(db.Model):
+    """Bounded audit of imports; contains no private workbook content."""
+    __tablename__ = "sync_runs"
+    id = db.Column(db.Integer, primary_key=True)
+    source_key = db.Column(db.String(64), nullable=False, index=True)
+    started_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    finished_at = db.Column(db.DateTime(timezone=True))
+    status = db.Column(db.String(32), nullable=False, default="running")
+    trigger = db.Column(db.String(24), nullable=False, default="manual")
+    bytes_downloaded = db.Column(db.Integer, default=0)
+    records_imported = db.Column(db.Integer, default=0)
+    error_code = db.Column(db.String(64))
+    error_summary = db.Column(db.String(256))

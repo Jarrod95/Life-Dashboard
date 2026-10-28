@@ -9,6 +9,7 @@ import zipfile
 from collections import Counter, defaultdict
 from datetime import date, datetime, timezone, timedelta
 from pathlib import Path, PurePosixPath
+from io import BytesIO
 from zoneinfo import ZoneInfo
 
 from flask import Blueprint, current_app, jsonify, render_template, request
@@ -190,6 +191,15 @@ def kg(value, unit):
 def load_zip(path):
     """Parse all relationships into dictionaries before changing persisted data."""
     with zipfile.ZipFile(path) as z:
+        infos = z.infolist()
+        if len(infos) > 500 or sum(i.file_size for i in infos) > 120_000_000:
+            raise ValueError("Excessive archive expansion")
+        if z.testzip() is not None:
+            raise ValueError("ZIP CRC validation failed")
+        for info in infos:
+            p = PurePosixPath(info.filename)
+            if p.is_absolute() or ".." in p.parts or "\\" in info.filename:
+                raise ValueError("Unsafe archive member path")
         exercises = member_data(z, "Exercise.json", required=True)
         sessions = member_data(z, "WorkoutSession.json", required=True)
         flat_exercises = member_data(z, "WorkoutSessionExercise.json")
@@ -234,14 +244,16 @@ def load_zip(path):
     return dictionary, result, {"source_sessions": len(sessions), "source_session_exercises": len(flat_exercises), "source_sets": len(flat_sets)}
 
 
-def import_latest(force=False):
-    path, warnings = latest_archive()
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+def import_zip_bytes(blob, filename="GymDay.zip", force=False, warnings=None):
+    """Ingest an in-memory validated export using the same canonical upserts."""
+    warnings = warnings or []
+    path = BytesIO(blob)
+    digest = hashlib.sha256(blob).hexdigest()
     previous = GymImport.query.filter_by(digest=digest, version=IMPORT_VERSION, status="success").first()
     if previous and not force:
-        return {"status": "unchanged", "filename": path.name, "counts": previous.counts, "warnings": warnings}
+        return {"status": "unchanged", "filename": filename, "counts": previous.counts, "warnings": warnings}
     dictionary, sessions, counts = load_zip(path)
-    run = GymImport(filename=path.name, digest=digest, version=IMPORT_VERSION,
+    run = GymImport(filename=Path(filename).name, digest=digest, version=IMPORT_VERSION,
                     status="success", warnings=warnings, counts=counts)
     try:
         for eid, e in dictionary.items():
@@ -307,10 +319,15 @@ def import_latest(force=False):
         counts.update(imported_sessions=len(session_ids), imported_session_exercises=len(se_ids), imported_sets=len(set_ids))
         db.session.add(run)
         db.session.commit()
-        return {"status": "success", "filename": path.name, "counts": counts, "warnings": warnings}
+        return {"status": "success", "filename": filename, "counts": counts, "warnings": warnings}
     except Exception:
         db.session.rollback()
         raise
+
+
+def import_latest(force=False):
+    path, warnings = latest_archive()
+    return import_zip_bytes(path.read_bytes(), path.name, force=force, warnings=warnings)
 
 
 def bounds():
@@ -581,6 +598,13 @@ def api_records():
 
 @gym_api.get("/imports/status")
 def api_status():
+    if current_app.config.get("LIFE_DATA_SOURCE") == "onedrive":
+        from app.services.sync import statuses
+        remote = next((s for s in statuses() if s["source_key"] == "gymday_latest_zip"), {})
+        latest = GymImport.query.order_by(GymImport.id.desc()).first()
+        return jsonify(data={"latest": {"filename": latest.filename, "status": latest.status,
+                                       "counts": latest.counts, "warnings": latest.warnings}
+                             if latest else None, "discovery": remote})
     latest = GymImport.query.order_by(GymImport.id.desc()).first()
     try:
         archive, warnings = latest_archive()
@@ -598,6 +622,11 @@ def api_refresh():
     if not request.is_json and request.content_length:
         return jsonify(error={"message": "JSON request expected"}), 400
     try:
+        if current_app.config.get("LIFE_DATA_SOURCE") == "onedrive":
+            from app.services.sync import sync_one
+            if request.remote_addr not in ("127.0.0.1", "::1") and not current_app.config.get("TESTING"):
+                return jsonify(error={"code": "forbidden", "message": "Local admin only"}), 403
+            return jsonify(data=sync_one("gymday_latest_zip"))
         return jsonify(data=import_latest())
     except (ValueError, OSError, zipfile.BadZipFile, json.JSONDecodeError) as exc:
         return jsonify(error={"message": str(exc)}), 400

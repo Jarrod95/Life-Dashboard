@@ -38,6 +38,9 @@ def create_app(test_config=None):
         SQLALCHEMY_DATABASE_URI="sqlite:///" + str(database_path),
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
         MAX_CONTENT_LENGTH=int(os.getenv("LIFE_MAX_UPLOAD_MB", "20")) * 1024 * 1024,
+        LIFE_DATA_SOURCE=os.getenv("LIFE_DATA_SOURCE", "local").lower(),
+        LIFE_SYNC_LOCAL_FALLBACK=os.getenv("LIFE_SYNC_LOCAL_FALLBACK", "true").lower() == "true",
+        GRAPH_FINANCE_CACHE_PATH=str(Path(app.instance_path) / "finance-graph-cache.xlsx"),
         SOURCE_WORKBOOK=os.getenv("LIFE_FINANCE_XLSX_PATH", ""),
         BODY_COMPOSITION_XLSX_PATH=os.getenv("LIFE_BODY_COMPOSITION_XLSX_PATH", ""),
         BODY_COMPOSITION_IMPORT_ON_STARTUP=os.getenv("LIFE_BODY_COMPOSITION_IMPORT_ON_STARTUP", "true").lower() == "true",
@@ -60,8 +63,11 @@ def create_app(test_config=None):
     from app import mfp  # noqa: F401
     from app import body_composition
     from app.routes import site, api
+    from app.graph_routes import graph_pages, graph_api
     app.register_blueprint(site)
     app.register_blueprint(api)
+    app.register_blueprint(graph_pages)
+    app.register_blueprint(graph_api)
     app.register_blueprint(gymday.gym_pages)
     app.register_blueprint(gymday.gym_api)
     app.register_blueprint(mfp.mfp_pages)
@@ -74,17 +80,40 @@ def create_app(test_config=None):
         if db.engine.dialect.name == "sqlite":
             with db.engine.connect() as conn:
                 conn.exec_driver_sql("PRAGMA journal_mode=WAL")
-        if app.config.get("BODY_COMPOSITION_IMPORT_ON_STARTUP") and not app.config.get("TESTING"):
+        if app.config.get("LIFE_DATA_SOURCE") == "local" and app.config.get("BODY_COMPOSITION_IMPORT_ON_STARTUP") and not app.config.get("TESTING"):
             try:
                 body_composition.import_source()
             except Exception:
                 db.session.rollback()
                 app.logger.exception("Body composition import failed; last successful snapshot retained")
-        if os.getenv("LIFE_GYMDAY_IMPORT_ON_STARTUP", "false").lower() == "true" and not app.config.get("TESTING"):
+        if app.config.get("LIFE_DATA_SOURCE") == "local" and os.getenv("LIFE_GYMDAY_IMPORT_ON_STARTUP", "false").lower() == "true" and not app.config.get("TESTING"):
             try:
                 gymday.import_latest()
             except (OSError, ValueError, Exception):
                 app.logger.exception("Gym Day startup import failed; existing dashboard remains available")
+    from app.graph_cli import register_cli
+    register_cli(app)
+    # Non-blocking Graph polling runs only in the serving debug child or non-debug process.
+    # A cross-process file lock in the sync service prevents duplicate imports.
+    if (app.config.get("LIFE_DATA_SOURCE") == "onedrive"
+            and not app.config.get("TESTING")
+            and os.getenv("LIFE_SYNC_ON_STARTUP", "true").lower() == "true"
+            and (os.getenv("FLASK_DEBUG", "0").lower() not in ("1", "true")
+                 or os.getenv("WERKZEUG_RUN_MAIN") == "true")):
+        from threading import Thread
+        from time import sleep
+        def poll_sources():
+            from app.services.sync import sync_all
+            sleep(3)
+            while True:
+                with app.app_context():
+                    try:
+                        sync_all(trigger="scheduled")
+                    except Exception:
+                        app.logger.warning("Scheduled Graph sync did not complete")
+                interval = max(5, int(os.getenv("LIFE_SYNC_INTERVAL_MINUTES", "60")))
+                sleep(interval * 60)
+        Thread(target=poll_sources, name="graph-sync", daemon=True).start()
     @app.get("/health")
     def healthcheck():
         return jsonify(status="ok", application="Life-Dashboard"), 200

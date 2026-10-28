@@ -2,11 +2,12 @@
 name = "life-dashboard"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = ["Flask>=3.1,<4", "Flask-SQLAlchemy>=3.1,<4", "Flask-Migrate>=4,<5", "Flask-WTF>=1.2,<2", "openpyxl>=3.1,<4", "PyYAML>=6,<7", "python-dotenv>=1,<2"]
+dependencies = ["Flask>=3.1,<4", "Flask-SQLAlchemy>=3.1,<4", "Flask-Migrate>=4,<5", "Flask-WTF>=1.2,<2", "openpyxl>=3.1,<4", "PyYAML>=6,<7", "python-dotenv>=1,<2", "msal>=1.31,<2", "requests>=2.32,<3", "filelock>=3.16,<4", "pywin32>=308; sys_platform == 'win32'"]
 [project.optional-dependencies]
 dev = ["pytest>=8,<10", "ruff>=0.9,<1"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["graph_live: explicitly opted-in read-only personal Graph integration tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"

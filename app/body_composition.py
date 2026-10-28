@@ -5,6 +5,7 @@ import hashlib
 import math
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from io import BytesIO
 
 from flask import Blueprint, current_app, jsonify, render_template, request
 from openpyxl import load_workbook
@@ -120,6 +121,28 @@ def parse_workbook(path):
         return result, warnings
     finally:
         workbook.close()
+
+def import_source_bytes(blob, filename="Body Composition.xlsx", force=False):
+    """Ingest validated remote bytes without requiring a synced local OneDrive file."""
+    digest = hashlib.sha256(blob).hexdigest()
+    previous = CompositionImport.query.order_by(CompositionImport.id.desc()).first()
+    if previous and previous.digest == digest and not force:
+        return {"status": "unchanged", "counts": previous.counts}
+    records, warnings = parse_workbook(BytesIO(blob))
+    counts = {kind: len(items) for kind, items in records.items()}
+    try:
+        CompositionRow.query.delete(synchronize_session=False)
+        for kind, items in records.items():
+            for day, key, payload in items:
+                db.session.add(CompositionRow(source=kind, observed_on=day, row_key=key, payload=payload))
+        db.session.add(CompositionImport(digest=digest, filename=Path(filename).name,
+                                         counts=counts, warnings=warnings[:100]))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+    return {"status": "success", "counts": counts, "warnings": warnings[:100]}
+
 
 def import_source(force=False):
     path = source_path()
