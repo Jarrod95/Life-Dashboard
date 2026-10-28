@@ -92,3 +92,11 @@ def test_inline_projection_navigation_and_assets(client):
     assert b"delta<=180" in javascript.data
     assert b"recent.length>=5" in javascript.data
     assert b"bc-chart-legend" in javascript.data
+
+
+def test_chart_date_filter_accepts_iso_dates(client):
+    """Guard against double-escaped regex silently hiding all observations."""
+    http, _ = client
+    script = http.get("/static/js/body-composition.js").get_data(as_text=True)
+    assert r"/^\d{4}-\d{2}-\d{2}$/" in script
+    assert r"/^\\d{4}-\\d{2}-\\d{2}$/" not in script
