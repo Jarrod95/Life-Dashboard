@@ -76,3 +76,37 @@ def test_pagination_must_remain_graph_origin():
     session = Session([Response(payload={"value": [], "@odata.nextLink": "https://evil.example"})])
     with pytest.raises(GraphError):
         OneDriveClient(session, token_provider=lambda: "test").list_children("d", "i")
+
+
+def test_throttling_exhaustion_and_retry_after(monkeypatch):
+    from app.integrations import onedrive
+    pauses = []
+    monkeypatch.setattr(onedrive.time, "sleep", pauses.append)
+    session = Session([Response(429, headers={"Retry-After": "1"}) for _ in range(4)])
+    with pytest.raises(GraphError) as exc:
+        OneDriveClient(session, token_provider=lambda: "test").drive()
+    assert exc.value.code == "throttled"
+    assert len(session.calls) == 4
+    assert pauses == [1, 1, 1]
+
+
+def test_transient_graph_error_recovers(monkeypatch):
+    monkeypatch.setattr("app.integrations.onedrive.time.sleep", lambda _: None)
+    session = Session([Response(503), Response(payload={"id": "ok"})])
+    assert OneDriveClient(session, token_provider=lambda: "test").drive()["id"] == "ok"
+
+
+def test_malformed_json_rejected():
+    class BadResponse(Response):
+        def json(self):
+            raise ValueError("invalid json")
+    with pytest.raises(GraphError) as exc:
+        OneDriveClient(Session([BadResponse()]), token_provider=lambda: "test").drive()
+    assert exc.value.code == "invalid_response"
+
+
+def test_body_download_auth_header_is_present_only_for_graph():
+    session = Session([Response(data=b"ok")])
+    result = OneDriveClient(session, token_provider=lambda: "bearer").download("d", "i")
+    assert result == b"ok"
+    assert session.calls[0][1]["headers"]["Authorization"] == "Bearer bearer"
