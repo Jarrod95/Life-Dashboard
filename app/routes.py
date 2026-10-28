@@ -244,6 +244,9 @@ def load_upload():
         if not raw:
             raise ValueError("Empty workbook")
         return raw, Path(uploaded.filename).name
+    # Graph mode must not silently fall back to a stale Windows workbook.
+    if current_app.config.get("LIFE_DATA_SOURCE") == "onedrive":
+        raise ValueError("Use Data Sources > Sync now for the configured OneDrive workbook")
     # No arbitrary path accepted from the browser.
     source = current_app.config.get("SOURCE_WORKBOOK")
     if not source or not Path(source).is_file():
