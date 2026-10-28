@@ -1,0 +1,3 @@
+Single-user SQLite migration history. Run: flask db upgrade
+Existing installations created with db.create_all() are supported by the conditional
+initial source-table revision. Back up data/life-dashboard.sqlite first.
