@@ -17,7 +17,7 @@ function kpi(label,val,unit=""){return '<article class="strength-card strength-k
 function canvas(id){return '<canvas class="strength-chart" id="'+id+'" tabindex="0" role="img" aria-label="Interactive '+esc(id.replaceAll("-"," "))+' chart"></canvas><p class="strength-tooltip" id="'+id+'-detail">Focus or hover over a data point for details.</p>';}
 function dataTable(rows,cols){if(!rows.length)return '<p class="strength-empty">No matching records.</p>';return '<div class="strength-table-wrap"><table class="strength-table"><thead><tr>'+cols.map(c=>'<th scope="col">'+esc(c[0])+'</th>').join("")+'</tr></thead><tbody>'+rows.map(row=>'<tr>'+cols.map(c=>'<td>'+String(c[1](row))+'</td>').join("")+'</tr>').join("")+'</tbody></table></div>';}
 function link(s,label,type="sessions"){return '<a href="/fitness/strength/'+type+'/'+encodeURIComponent(s)+'">'+esc(label)+'</a>';}
-function chart(id,items,{x="label",y="value",mode="bar",unit="",click}={}){
+function chart(id,items,{x="label",y="value",mode="bar",unit="",click,allLabels=false}={}){
  const el=document.getElementById(id);if(!el)return;const tooltip=document.getElementById(id+"-detail");
  let hits=[],selected=0;
  const color=name=>getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -26,7 +26,7 @@ function chart(id,items,{x="label",y="value",mode="bar",unit="",click}={}){
   const dpr=window.devicePixelRatio||1;el.width=width*dpr;el.height=height*dpr;
   const c=el.getContext("2d");c.scale(dpr,dpr);c.clearRect(0,0,width,height);
   if(!items.length){c.fillStyle=color("--text-muted");c.fillText("No data in selected period",15,32);return;}
-  const p={l:58,r:14,t:18,b:42},w=width-p.l-p.r,h=height-p.t-p.b;
+  const p={l:58,r:14,t:18,b:allLabels?110:42},w=width-p.l-p.r,h=height-p.t-p.b;
   const max=Math.max(1,...items.map(a=>Number(a[y])||0))*1.1;
   c.font="11px system-ui";c.strokeStyle=color("--chart-grid");c.fillStyle=color("--text-muted");
   for(let i=0;i<=4;i++){const v=max*i/4,yy=p.t+h-v/max*h;c.beginPath();c.moveTo(p.l,yy);c.lineTo(width-p.r,yy);c.stroke();c.fillText(fmt(v),5,yy+4);}
@@ -38,7 +38,11 @@ function chart(id,items,{x="label",y="value",mode="bar",unit="",click}={}){
   });
   if(mode==="line"){c.beginPath();hits.forEach((hit,i)=>i?c.lineTo(hit.x,hit.y):c.moveTo(hit.x,hit.y));c.strokeStyle=color("--accent");c.lineWidth=2;c.stroke();hits.forEach(hit=>{c.beginPath();c.arc(hit.x,hit.y,2.8,0,Math.PI*2);c.fillStyle=color("--accent");c.fill();});}
   c.textAlign="center";c.fillStyle=color("--text-muted");
-  const every=Math.max(1,Math.ceil(items.length/7));hits.forEach((hit,i)=>{if(i%every===0)c.fillText(String(items[i][x]).slice(-9),hit.x,height-18);});
+  const every=allLabels?1:Math.max(1,Math.ceil(items.length/7));
+  hits.forEach((hit,i)=>{if(i%every!==0)return;
+    if(allLabels){c.save();c.translate(hit.x,height-88);c.rotate(-Math.PI/4);c.textAlign="right";c.fillText(String(items[i][x]),0,0);c.restore();}
+    else c.fillText(String(items[i][x]).slice(-9),hit.x,height-18);
+  });
  }
  function focus(i){if(!hits.length)return;selected=Math.max(0,Math.min(i,hits.length-1));const hit=hits[selected];tooltip.textContent=String(hit.item[x])+" · "+fmt(hit.item[y])+(unit?" "+unit:"");}
  el.addEventListener("pointermove",e=>{if(!hits.length)return;const rect=el.getBoundingClientRect(),xx=e.clientX-rect.left;focus(hits.reduce((best,h,i)=>Math.abs(h.x-xx)<Math.abs(hits[best].x-xx)?i:best,0));});
@@ -59,7 +63,7 @@ async function overview(){
  '</div>';
  chart("gym-weekly",d.weekly,{x:"week",y:"count",unit:"sessions"});
  chart("gym-volume",vol,{x:"period",y:"volume_kg",mode:"line",unit:"kg"});
- async function drawMuscles(){const r=await get("/muscles",{role:document.getElementById("gym-role").value});chart("gym-muscles",r.data.slice(0,20),{x:"name",y:"sets",unit:"sets"});}
+ async function drawMuscles(){const r=await get("/muscles",{role:document.getElementById("gym-role").value});chart("gym-muscles",r.data.slice(0,20),{x:"name",y:"sets",unit:"sets",allLabels:true});}
  document.getElementById("gym-role").onchange=()=>drawMuscles().catch(showError);await drawMuscles();
  const cal=document.getElementById("gym-calendar");for(const day of d.calendar){const b=document.createElement("button");b.textContent=day.date.slice(5);b.dataset.count=day.sessions;b.title=fmtDate(day.date)+" · "+day.sessions+" session(s)";b.onclick=()=>location.href="/fitness/strength/history?from="+day.date+"&to="+day.date;cal.appendChild(b);}
  if(!d.calendar.length)cal.textContent="No training sessions recorded for this period.";
