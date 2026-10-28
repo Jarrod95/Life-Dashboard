@@ -15,7 +15,7 @@ def test_graph_readonly_smoke():
     from app.integrations.onedrive import OneDriveClient
     from app.services.data_sources import SOURCES, resolve
 
-    app = create_app({"TESTING": True})
+    app = create_app({"TESTING": True, "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:"})
     with app.app_context():
         client = OneDriveClient()
         assert client.whoami().get("id")
