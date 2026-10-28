@@ -14,8 +14,11 @@ REQUIRED = {"daily": {"date", "calories", "protein_g", "food_entries"}, "foods":
 PATTERN = re.compile(r"^mfp_.*_(daily|foods|meals)\.csv$", re.I)
 
 
-def discover(client):
-    folder = client.get_item_by_path(source_path("mfp_exports"))
+def discover(client, state=None):
+    if state is not None and state.selected_drive_id and state.selected_item_id:
+        folder = client.get_item_by_id(state.selected_drive_id, state.selected_item_id)
+    else:
+        folder = client.get_item_by_path(source_path("mfp_exports"))
     if "folder" not in folder:
         raise GraphError("invalid_source", "MFP source must be a folder")
     drive = folder.get("parentReference", {}).get("driveId") or client.drive()["id"]
