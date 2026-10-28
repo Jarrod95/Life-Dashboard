@@ -33,3 +33,18 @@ python -m pytest tests/test_mfp.py -q
 ```
 
 Check both URLs after restarting. No GitHub Actions are needed. The GitHub connector cannot execute Windows browser smoke tests, so production behaviour must be verified locally. The food table is paged at 100 rows (maximum 200); CSV export captures the *displayed current page*, not all matching pages.
+
+
+## Three-month weight projection and nutrition targets
+The weight history chart extends **90 days beyond the latest measurement** and visually separates recorded weights from a dashed forecast and an illustrative shaded variation range. The forecast uses a capped least-squares trend of smoothed measurements in the last 60 calendar days, anchored to the latest seven observations. At least seven distinct dates across 14 days are required; otherwise only observed data is displayed. These projections are trend extrapolations, not a prediction of future body composition or a medically calibrated confidence interval.
+
+Set your goals in the root `.env` and **restart** the Flask dashboard after changing them:
+
+```dotenv
+MFP_CALORIE_GOAL=1800
+MFP_CARB_GOAL=73
+MFP_FAT_GOAL=60
+MFP_PROTEIN_GOAL=203
+```
+
+The food diary's calorie, carbohydrate, fat, and protein plots all use vertical bars; dashed labelled reference lines show the relevant configured daily targets. Values shown on the chart use the same units as the source CSV (kcal for calories, g for macros). Goals are applied to the full date-filtered daily charts, not overwritten by historical goal values in exported CSVs.
