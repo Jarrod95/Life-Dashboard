@@ -103,7 +103,7 @@ def sync_mfp(force=False, trigger="manual", client=None):
         db.session.commit()
         try:
             api = client or OneDriveClient()
-            drive, items, fingerprint = discover(api)
+            drive, items, fingerprint = discover(api, state)
             state.last_checked_at = _now()
             target = root / "mfp-graph-cache"
             if (not force and state.sha256 == fingerprint and
