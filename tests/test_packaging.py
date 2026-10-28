@@ -1,25 +1,23 @@
-"""Protect editable installs against accidental packaging of local data directories."""
+"""Verify Python packaging configuration without importing build-only setuptools."""
 from pathlib import Path
 import tomllib
-
-from setuptools import find_packages
-
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_only_flask_app_is_discovered():
+def test_only_app_package_is_discoverable():
     config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     discovery = config["tool"]["setuptools"]["packages"]["find"]
-    packages = find_packages(
-        where=str(ROOT),
-        include=discovery["include"],
-        exclude=discovery["exclude"],
-    )
-    assert "app" in packages
-    assert "app.integrations" in packages
-    assert "app.services" in packages
-    assert all(name == "app" or name.startswith("app.") for name in packages)
+    assert discovery["where"] == ["."]
+    assert discovery["namespaces"] is False
+    assert discovery["include"] == ["app", "app.*"]
+    for excluded in ("tests", "data", "config", "migrations"):
+        assert excluded in discovery["exclude"]
+        assert excluded + ".*" in discovery["exclude"]
+
+    # Check filesystem layout, independent of setuptools' isolated build environment.
+    for name in ("app", "app/integrations", "app/services"):
+        assert (ROOT / name / "__init__.py").is_file()
 
 
 def test_graph_dependencies_are_installable_project_requirements():
