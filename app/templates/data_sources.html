@@ -29,6 +29,17 @@
     </tbody>
   </table>
   <p id="sync-result" role="status" aria-live="polite"></p>
+  <section aria-label="OneDrive folder discovery">
+    <h3>Choose a OneDrive source</h3>
+    <p>Browse the personal drive and select a file, or select the GymDay export folder.</p>
+    <label for="browse-source">Data source</label>
+    <select id="browse-source">
+      {% for s in sources %}<option value="{{ s.source_key }}">{{ s.source_key }}</option>{% endfor %}
+    </select>
+    <button type="button" id="browse-root">Browse root</button>
+    <p id="browse-location" aria-live="polite"></p>
+    <div id="browse-items" role="group" aria-label="OneDrive folders and files"></div>
+  </section>
 </div>
 <script>
 (() => {
@@ -64,6 +75,41 @@
     catch(err) { result.textContent=err.message; }
     finally { b.disabled=false; }
   }));
+  const browse = document.getElementById('browse-items');
+  const locationLabel = document.getElementById('browse-location');
+  async function browseFolder(itemId) {
+    browse.replaceChildren(); locationLabel.textContent='Loading folder…';
+    try {
+      const url='/api/v1/data-sources/graph/browse' +
+        (itemId ? '?item_id=' + encodeURIComponent(itemId) : '');
+      const response=await fetch(url, {credentials:'same-origin'});
+      const body=await response.json();
+      if (!response.ok) throw Error(body.error?.message || 'Folder listing failed');
+      locationLabel.textContent='Choose a folder or file (' + body.data.items.length + ' entries)';
+      for (const item of body.data.items) {
+        const el=document.createElement('button');
+        el.type='button';
+        el.style.margin='0.25rem';
+        el.textContent=(item.kind==='folder'?'Folder: ':'File: ')+item.name;
+        el.addEventListener('click', async () => {
+          const key=document.getElementById('browse-source').value;
+          const chooseFolder=key==='gymday_latest_zip';
+          if (item.kind==='folder' && !chooseFolder) { await browseFolder(item.id); return; }
+          if (item.kind==='file' && chooseFolder) return;
+          el.disabled=true;
+          try {
+            const selected=await post('/api/v1/data-sources/'+key+'/select',
+              {drive_id:body.data.drive_id,item_id:item.id});
+            result.textContent=key+' source selected; click Sync now to import.';
+            if (item.kind==='folder') await browseFolder(item.id);
+          } catch(err) { result.textContent=err.message; }
+          finally { el.disabled=false; }
+        });
+        browse.append(el);
+      }
+    } catch(err) { locationLabel.textContent=err.message; }
+  }
+  document.getElementById('browse-root').addEventListener('click',()=>browseFolder(null));
   setInterval(async () => {
     try { const r=await fetch('/api/v1/data-sources/graph/status');
       const s=(await r.json()).data;
