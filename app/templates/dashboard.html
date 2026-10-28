@@ -5,6 +5,17 @@
     <p class="muted">A clear view of your personal data. Missing values are shown as unavailable.</p></div>
   {% if data.latest %}<span class="freshness">Latest snapshot {{ data.latest.as_of }}</span>{% else %}<span class="freshness">No imported snapshots</span>{% endif %}
 </div>
+{% if section == 'overview' %}
+<section class="panel"><h2>Across your life</h2><p class="muted">Recent observations, labelled by source and measurement date. Data gaps are not treated as zero.</p><div id="life-overview" class="metrics" aria-live="polite"><span>Loading fitness and nutrition summaries…</span></div></section>
+<section class="metrics" aria-label="Body composition highlights">
+{% for source,field,label,unit in [('manual','Weight','Manual weight','kg'),('manual','Waist','Manual waist','cm'),('evolt','Total Body Fat Percentage','Evolt body fat','%'),('dexa','Tissue % Fat','DEXA body fat','%')] %}
+{% set record = composition[source] %}
+<article class="metric"><span>{{ label }}</span><strong>{{ ('{:,.1f}'.format(record[field]|float) ~ ' ' ~ unit) if record and record[field] is not none else 'Unavailable' }}</strong><small>{{ source|upper }} · {{ record.date if record else 'No scan' }}</small></article>
+{% endfor %}
+</section>
+<div class="panel"><h2>Body composition</h2><p class="muted">Manual, Evolt and DEXA methods are not interchangeable. Source health: {{ composition_status.status }}. <a href="/fitness/body-composition">Explore detailed trends and projections</a>.</p><div class="chart-frame compact"><canvas id="life-weight" tabindex="0" role="img" aria-label="Manual weight trend"></canvas></div><p id="life-weight-note" class="muted"></p></div>
+<script defer src="{{ url_for('static',filename='js/life-overview.js') }}"></script>
+{% endif %}
 {% if section in ['overview','finance','net-worth'] %}
 <section class="metrics" aria-label="Financial summary">
   <article class="metric"><span>Reported net worth</span><strong>{{ ('$' ~ '{:,.2f}'.format(data.latest.reported|float)) if data.latest and data.latest.reported else 'Not available' }}</strong><small>Source workbook · {{ data.latest.as_of if data.latest else 'No data' }}</small></article>
