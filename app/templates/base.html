@@ -6,6 +6,7 @@
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>{{ title }} · Life Dashboard</title>
   <script>document.documentElement.dataset.theme=localStorage.getItem('life-theme')||'light';</script>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static',filename='favicon.svg') }}">
   <link rel="stylesheet" href="{{ url_for('static',filename='css/solarized.css') }}">
   <link rel="stylesheet" href="{{ url_for('static',filename='css/components.css') }}">
 </head>
@@ -26,6 +27,7 @@
       <a class="{{ 'active' if section=='strength' }}" href="/fitness/strength">Strength training</a>
       <a class="{{ 'active' if section=='mfp-weight' }}" href="/fitness/weight">Weight history</a>
       <a class="{{ 'active' if section=='mfp-food' }}" href="/fitness/food-diary">Food diary</a>
+      <a class="{{ 'active' if section=='body-composition' }}" href="/fitness/body-composition">Body composition</a>
       <a class="{{ 'active' if section=='health-dashboard' }}" href="/health-dashboard">Health</a>
       <a class="{{ 'active' if section=='goals' }}" href="/goals">Goals</a>
       <p class="nav-heading">SYSTEM</p>
