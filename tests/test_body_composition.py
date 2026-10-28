@@ -79,3 +79,16 @@ def test_projections_are_bounded_and_source_specific(client):
         assert all(p["value"]>=0 for p in value["points"])
         with pytest.raises(ValueError):
             projection("dexa",90,90)
+
+
+def test_inline_projection_navigation_and_assets(client):
+    http, _ = client
+    page = http.get("/fitness/body-composition")
+    assert page.status_code == 200
+    assert b">Projections</a>" not in page.data
+    assert http.get("/fitness/body-composition/projections").status_code == 404
+    javascript = http.get("/static/js/body-composition.js")
+    assert javascript.status_code == 200
+    assert b"delta<=180" in javascript.data
+    assert b"recent.length>=5" in javascript.data
+    assert b"bc-chart-legend" in javascript.data
