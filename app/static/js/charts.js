@@ -63,25 +63,42 @@
    return {p,y:value=>p.top+(max-value)/span*usable,width:w-p.left-p.right,height:usable};
  }
  const net=chart('networth-chart',(ctx,w,h,state)=>{
-   const data=state.data||[];
+   const data=(state.data||[]).filter(x=>x.reported!==null && Number.isFinite(Number(x.reported)));
    if(!data.length){ctx.fillStyle=css('--text-muted');ctx.fillText('No historical net worth snapshots available.',16,45);return [];}
-   const values=data.map(x=>Number(x.reported)),min=Math.min(...values),max=Math.max(...values);
-   const margin=Math.max(1,(max-min)*.08),axis=axes(ctx,w,h,min-margin,max+margin);
-   const points=data.map((item,i)=>({
-     x:axis.p.left+(data.length===1?axis.width/2:i/(data.length-1)*axis.width),
-     y:axis.y(Number(item.reported)),
-     label:dateLabel(item.as_of)+' · '+aud(item.reported)
-   }));
-   ctx.beginPath();ctx.strokeStyle=css('--accent');ctx.lineWidth=2.2;
-   points.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.stroke();
-   if(state.focus>=0&&state.focus<points.length){
-     const pt=points[state.focus];ctx.fillStyle=css('--accent');
-     ctx.beginPath();ctx.arc(pt.x,pt.y,4,0,2*Math.PI);ctx.fill();
+   const day=86400000, date=x=>new Date(x.as_of+'T00:00:00Z').getTime();
+   // Calendar-time 90-day rolling mean, not an arbitrary number of snapshots.
+   const rolling=data.map(item=>{
+     const window=data.filter(x=>date(x)>=date(item)-90*day && date(x)<=date(item));
+     return window.reduce((v,x)=>v+Number(x.reported),0)/window.length;
+   });
+   const last=data[data.length-1],start=date(last);
+   const first=Math.max(0,data.length-1);
+   const monthly=[];
+   for(let i=1;i<data.length;i++){
+     const elapsed=(date(data[i])-date(data[i-1]))/day;
+     if(elapsed>0)monthly.push((rolling[i]-rolling[i-1])*30.4375/elapsed);
    }
-   ctx.fillStyle=css('--text-muted');ctx.textAlign='left';
-   ctx.fillText(dateLabel(data[0].as_of),axis.p.left,h-8);
-   ctx.textAlign='right';ctx.fillText(dateLabel(data[data.length-1].as_of),w-axis.p.right,h-8);
-   return points;
+   const rate=monthly.length?monthly.reduce((a,v)=>a+v,0)/monthly.length:0;
+   const projected=Array.from({length:12},(_,i)=>{
+     const d=new Date(start);d.setUTCMonth(d.getUTCMonth()+i+1);
+     return {as_of:d.toISOString().slice(0,10),reported:String(rolling[first]+rate*(i+1))};
+   });
+   const values=[...data.map(x=>Number(x.reported)),...rolling,...projected.map(x=>Number(x.reported))];
+   const min=Math.min(...values),max=Math.max(...values),margin=Math.max(1,(max-min)*.08);
+   const axis=axes(ctx,w,h,min-margin,max+margin),end=date(projected[projected.length-1]);
+   const pos=(timestamp,value)=>({x:axis.p.left+(timestamp-date(data[0]))/(end-date(data[0])||1)*axis.width,y:axis.y(value)});
+   const actual=data.map(item=>({...pos(date(item),Number(item.reported)),label:dateLabel(item.as_of)+' · actual '+aud(item.reported)}));
+   const mean=data.map((item,i)=>pos(date(item),rolling[i]));
+   const future=[pos(start,rolling[first]),...projected.map(item=>pos(date(item),Number(item.reported)))];
+   function drawLine(points,color,dash=[]){ctx.beginPath();ctx.strokeStyle=color;ctx.lineWidth=2.2;ctx.setLineDash(dash);points.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.stroke();ctx.setLineDash([]);}
+   drawLine(actual,css('--accent'));
+   drawLine(mean,css('--solarized-orange'));
+   drawLine(future,css('--solarized-orange'),[6,5]);
+   ctx.fillStyle=css('--text-muted');ctx.textAlign='left';ctx.fillText(dateLabel(data[0].as_of),axis.p.left,h-8);
+   ctx.textAlign='right';ctx.fillText(dateLabel(projected[11].as_of),w-axis.p.right,h-8);
+   const legend=document.getElementById('networth-legend');
+   if(legend)legend.textContent='Blue: actual · Orange: trailing 90-day average · Dashed: 12-month projection ('+aud(rate)+'/month average change). Projection is illustrative, not a forecast guarantee.';
+   return [...actual,...projected.map((item,i)=>({...future[i+1],label:dateLabel(item.as_of)+' · projected '+aud(item.reported)}))];
  });
  let history=[],selectedRange='all';
  const renderHistory=()=>{
