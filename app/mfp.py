@@ -18,6 +18,8 @@ _cache = {}
 
 
 def source_dir():
+    if current_app.config.get("LIFE_DATA_SOURCE") == "onedrive":
+        return Path(current_app.instance_path) / "mfp-graph-cache"
     configured = current_app.config.get("MFP_DATA_DIR")
     if configured:
         return Path(str(configured).strip().strip('"')).expanduser()
@@ -245,7 +247,7 @@ def food_api():
         "top_foods": [{"food": name, **values} for name, values in
                       sorted(top.items(), key=lambda x: x[1]["count"], reverse=True)[:30]],
         "entries": foods[(page-1)*size:page*size]},
-        meta={"total": len(foods), "page": page, "page_size": size, "source": "local MyFitnessPal CSV exports",
+        meta={"total": len(foods), "page": page, "page_size": size, "source": "MyFitnessPal CSV exports",
               "note": "Averages exclude unlogged days; food table is filtered by meal/search."})
 
 
