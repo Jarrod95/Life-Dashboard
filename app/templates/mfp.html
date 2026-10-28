@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static',filename='css/mfp.css') }}">
+<div class="mfp" data-view="{{ view }}">
+ <header class="mfp-head"><div><p class="eyebrow">FITNESS / MYFITNESSPAL</p><h1>{{ title }}</h1><p>Historical data from your local sandbox-scripts exports.</p></div><nav><a href="/fitness/weight">Weight</a><a href="/fitness/food-diary">Food diary</a></nav></header>
+ <form id="mfp-filter" class="mfp-filters">
+  <label>Year<select name="year" id="mfp-year"><option value="">All years</option>{% for y in range(2023,2031) %}<option value="{{y}}">{{y}}</option>{% endfor %}</select></label>
+  <label>Month<select name="month" id="mfp-month"><option value="">All months</option>{% for m in range(1,13) %}<option value="{{m}}">{{ ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m-1] }}</option>{% endfor %}</select></label>
+  <label>From<input type="date" name="from"></label><label>To<input type="date" name="to"></label>
+  <button type="submit">Apply</button><button type="button" id="mfp-clear">Reset</button>
+ </form>
+ <div id="mfp-error" role="alert" hidden></div><div id="mfp-content" aria-live="polite"><p>Loading history…</p></div>
+</div>
+<script defer src="{{ url_for('static',filename='js/mfp.js') }}"></script>
+{% endblock %}
