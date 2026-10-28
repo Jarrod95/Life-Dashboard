@@ -1,6 +1,8 @@
 """Local-administrator-only Graph connection and data-source settings."""
 from flask import Blueprint, current_app, jsonify, render_template, request
-from app.models import SyncRun
+from app import db
+from app.models import SyncRun, DataSourceState
+from app.integrations.onedrive import OneDriveClient, GraphError
 from app.integrations import graph_auth
 from app.services.data_sources import SOURCES
 from app.services.sync import sync_one, statuses
@@ -82,3 +84,60 @@ def history():
                           "bytes_downloaded": r.bytes_downloaded, "records_imported": r.records_imported,
                           "error_code": r.error_code, "error_summary": r.error_summary}
                          for r in rows])
+
+
+@graph_api.get("/graph/browse")
+def browse():
+    """List a single selected folder, no recursive crawling or arbitrary URLs."""
+    try:
+        client = OneDriveClient()
+        drive = client.drive()
+        drive_id = drive["id"]
+        selected = request.args.get("item_id")
+        if selected:
+            if len(selected) > 256:
+                return json_error(GraphError("invalid_item", "Invalid item ID"))
+            folder = client.get_item_by_id(drive_id, selected)
+        else:
+            folder = client.root()
+        if "folder" not in folder:
+            return json_error(GraphError("not_folder", "Selected item is not a folder"))
+        children = client.list_children(drive_id, folder["id"])
+        return jsonify(data={"drive_id": drive_id, "parent_id": folder["id"],
+                             "items": [{"id": i["id"], "name": i.get("name", "")[:255],
+                                        "kind": "folder" if "folder" in i else "file"}
+                                       for i in children if "id" in i][:500]})
+    except (GraphError, graph_auth.GraphAuthError) as exc:
+        return json_error(exc)
+
+
+@graph_api.post("/<source_key>/select")
+def select_source(source_key):
+    """Store a stable item binding after validating access in this personal drive."""
+    if source_key not in SOURCES:
+        return json_error(GraphError("not_found", "Unknown source"), 404)
+    body = request.get_json(silent=True) or {}
+    drive_id, item_id = body.get("drive_id"), body.get("item_id")
+    if not all(isinstance(s, str) and 0 < len(s) <= 256 for s in (drive_id, item_id)):
+        return json_error(GraphError("invalid_item", "Invalid OneDrive item identifier"))
+    try:
+        client = OneDriveClient()
+        if client.drive()["id"] != drive_id:
+            return json_error(GraphError("forbidden", "Item must belong to the connected personal drive"), 403)
+        item = client.get_item_by_id(drive_id, item_id)
+        expected = "folder" if source_key == "gymday_latest_zip" else "file"
+        if expected not in item:
+            return json_error(GraphError("invalid_item", "Expected a " + expected))
+        if expected == "file" and not item.get("name", "").lower().endswith(".xlsx"):
+            return json_error(GraphError("invalid_item", "Expected an Excel workbook"))
+        state = DataSourceState.query.filter_by(source_key=source_key).first()
+        if state is None:
+            state = DataSourceState(source_key=source_key)
+            db.session.add(state)
+        state.selected_drive_id, state.selected_item_id = drive_id, item_id
+        state.status = "not_synced"
+        db.session.commit()
+        return jsonify(data={"source_key": source_key, "status": "selected"})
+    except (GraphError, graph_auth.GraphAuthError) as exc:
+        db.session.rollback()
+        return json_error(exc)
