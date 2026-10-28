@@ -31,7 +31,7 @@
       <button type="button" data-range="all" class="selected">All</button>
     </div>
   </div>
-  <div class="chart-frame"><canvas id="networth-chart" aria-label="Net worth history: hover or focus individual dates" role="img"></canvas><div class="chart-tooltip" id="networth-tooltip" role="status" aria-live="polite" hidden></div></div><p class="muted chart-note">Hover or use the keyboard to inspect individual snapshots.</p>
+  <div class="chart-frame"><canvas id="networth-chart" aria-label="Net worth history: hover or focus individual dates" role="img"></canvas><div class="chart-tooltip" id="networth-tooltip" role="status" aria-live="polite" hidden></div></div><p class="muted chart-note">Hover or use the keyboard to inspect individual snapshots.</p><p class="muted" id="networth-legend"></p>
 </div>
 {% endif %}
 {% if section in ['overview','finance','spending'] %}
@@ -84,6 +84,7 @@
 <div class="panel"><h2>Budget source</h2><p class="empty">Budget assumptions must be verified against the original workbook input columns before figures can be trusted. No guessed annualisations have been published.</p></div>
 {% endif %}
 {% if section == 'mortgage' %}
+<div class="panel"><h2>Mortgage history and 12-month projection</h2><p class="muted" id="mortgage-status">Reading your Net Worth Tracking sheet…</p><div id="mortgage-kpis" class="metrics"></div><div class="chart-frame"><canvas id="mortgage-history-chart" role="img" aria-label="Mortgage balance history and 12-month projection" tabindex="0"></canvas></div><p id="mortgage-assumptions" class="muted"></p></div>
 <div class="panel"><h2>Mortgage & offset calculator</h2><p class="muted">Hypothetical scenario only. Enter your current balances and a <strong>monthly</strong> repayment. Annual nominal rate as a decimal (5.64% = 0.0564).</p>
 <form id="mortgage-form" class="filters">
 <label>Loan principal ($)<input type="number" required min="0" step=".01" name="principal" placeholder="Principal"></label>

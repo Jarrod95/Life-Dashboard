@@ -73,13 +73,13 @@ def transaction_json(t):
 
 
 def effective_income(t):
-    """Recognise explicit payroll credits even if an older import stored false flags."""
-    if t.signed_amount <= 0 or t.excluded_from_spending or t.transfer_flag:
+    """Prefer explicit Westpac payroll markers over stale transfer classifications."""
+    if t.signed_amount <= 0:
         return False
-    if t.income_flag:
+    narrative = " ".join((t.raw_description or "", t.merchant_raw or "", t.raw_type or ""))
+    if re.search(r"\b(salary|payroll|wages)\b", narrative, re.I):
         return True
-    return bool(re.search(r"\b(salary|payroll|wages)\b",
-                          t.raw_description or "", re.I))
+    return bool(t.income_flag and not t.excluded_from_spending and not t.transfer_flag)
 
 
 def spending(start=None, end=None, group_by="month"):
@@ -211,3 +211,102 @@ def income_audit():
             for k, v in sorted(by_month.items())
         ],
     }
+
+
+def mortgage_tracking():
+    """Read source-verified mortgage observations from the configured workbook.
+
+    Values are deliberately omitted when a label cannot be identified reliably.
+    The workbook is the source of truth; no hard-coded account figures.
+    """
+    from datetime import date
+    from pathlib import Path
+    from flask import current_app
+    from openpyxl import load_workbook
+    from app.importer import parse_date
+    source = current_app.config.get("SOURCE_WORKBOOK")
+    if not source or not Path(source).is_file():
+        return {"status": "not_configured", "history": [], "projection": [],
+                "indicators": {}, "message": "Configure LIFE_FINANCE_XLSX_PATH to read mortgage data."}
+    wb = load_workbook(source, read_only=True, data_only=True)
+    try:
+        if "Net Worth Tracking" not in wb:
+            return {"status": "unavailable", "history": [], "projection": [],
+                    "indicators": {}, "message": "Net Worth Tracking sheet missing."}
+        ws = wb["Net Worth Tracking"]
+        labels = [(i, str(ws.cell(i, 1).value or "").strip().lower())
+                  for i in range(1, ws.max_row + 1)]
+        def pick(*patterns):
+            for pattern in patterns:
+                hits = [row for row, label in labels if re.search(pattern, label, re.I)]
+                if len(hits) == 1:
+                    return hits[0]
+            return None
+        # Exclude offset/equity/net-worth totals: only an outstanding loan balance qualifies.
+        loan_row = pick(r"^(?:investment property |home |property )?(?:mortgage|home loan|housing loan)(?: balance| amount| outstanding)?$",
+                        r"^(?=.*(?:mortgage|home loan|loan balance))(?!.*(?:offset|equity|interest|repayment|saving)).*$")
+        if loan_row is None:
+            return {"status": "unavailable", "history": [], "projection": [],
+                    "indicators": {}, "message": "Mortgage principal row could not be uniquely identified in column A."}
+        def number(value):
+            if value is None or isinstance(value, bool): return None
+            try:
+                result = Decimal(str(value).replace("$", "").replace(",", "").replace("%", "").strip())
+                return result if result.is_finite() else None
+            except Exception: return None
+        rate_row = pick(r"^(?:mortgage |home loan )?(?:interest rate|annual interest rate|rate)(?: \\(%)\\)?$")
+        offset_row = pick(r"^(?:mortgage )?offset(?: account)?(?: balance)?$")
+        remaining_row = pick(r"^(?:months remaining|remaining months|loan term remaining \\(months\\))$")
+        payment_row = pick(r"^(?:mortgage )?(?:repayment|monthly repayment|monthly payment|fortnightly repayment)$")
+        history, columns = [], []
+        for col in range(2, ws.max_column + 1):
+            try: d = parse_date(ws.cell(1, col).value, wb.epoch)
+            except (ValueError, TypeError): continue
+            if d > date.today(): continue
+            raw = number(ws.cell(loan_row, col).value)
+            if raw is None: continue
+            columns.append(col)
+            history.append({"as_of": d.isoformat(), "balance": money(abs(raw))})
+        history.sort(key=lambda item: item["as_of"])
+        if not history:
+            return {"status": "unavailable", "history": [], "projection": [],
+                    "indicators": {}, "message": "No dated mortgage balances found."}
+        latest_day = history[-1]["as_of"]
+        latest_col = next(c for c in columns if str(parse_date(ws.cell(1,c).value, wb.epoch)) == latest_day)
+        def val(row): return number(ws.cell(row,latest_col).value) if row else None
+        rate, offset, months, payment = val(rate_row), val(offset_row), val(remaining_row), val(payment_row)
+        if rate is not None and rate > 1: rate /= 100
+        if rate is not None and not (0 <= rate <= 1): rate = None
+        principal = Decimal(history[-1]["balance"])
+        offset = abs(offset) if offset is not None else None
+        charge = max(Decimal(0),principal-(offset or Decimal(0)))*rate/Decimal(12) if rate is not None else None
+        without_offset = principal*rate/Decimal(12) if rate is not None else None
+        daily_saving = min(principal,offset)*rate/Decimal(365) if rate is not None and offset is not None else None
+        monthly_saving = without_offset-charge if without_offset is not None and offset is not None else None
+        # Linear continuation uses observed average monthly principal reduction,
+        # normalised for unequal snapshot spacing. Never extrapolate upward debt as amortisation.
+        from datetime import datetime
+        from calendar import monthrange
+        def days(v): return datetime.fromisoformat(v["as_of"]).date().toordinal()
+        increments = [(Decimal(history[i-1]["balance"])-Decimal(history[i]["balance"]))*
+                       Decimal("30.4375")/Decimal(days(history[i])-days(history[i-1]))
+                       for i in range(1,len(history)) if days(history[i])>days(history[i-1])]
+        average = sum(increments, Decimal(0))/len(increments) if increments else Decimal(0)
+        projected = []
+        y,m = map(int,latest_day.split("-")[:2]); day = int(latest_day[-2:])
+        for index in range(1,13):
+            yy=y+(m-1+index)//12; mm=(m-1+index)%12+1
+            dd=min(day,monthrange(yy,mm)[1])
+            projected.append({"as_of":f"{yy:04d}-{mm:02d}-{dd:02d}",
+                              "balance":money(max(Decimal(0),principal-average*index))})
+        return {"status":"ok", "history":history, "projection":projected,
+                "indicators":{"principal":money(principal),"as_of":latest_day,
+                 "interest_rate":str(rate) if rate is not None else None,
+                 "offset":money(offset),"months_remaining":str(months) if months is not None else None,
+                 "repayment":money(payment), "next_month_interest_estimate":money(charge),
+                 "monthly_offset_interest_saving":money(monthly_saving),
+                 "daily_offset_interest_saving":money(daily_saving),
+                 "average_monthly_principal_reduction":money(average)},
+                "assumptions":"Projection: average observed monthly principal change, linear; interest: nominal rate / 12, constant balance and offset. Actual bank daily interest differs."}
+    finally:
+        wb.close()

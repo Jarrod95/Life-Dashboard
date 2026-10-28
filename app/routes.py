@@ -204,8 +204,8 @@ def budget_api():
 
 @api.get("/finance/mortgage")
 def mortgage_api():
-    return jsonify(status="not_configured",
-                   message="Enter source-verified mortgage parameters to run projections")
+    from app.finance import mortgage_tracking
+    return jsonify(data=mortgage_tracking())
 
 
 @api.post("/finance/mortgage/scenarios")

@@ -11,7 +11,7 @@ from app import db
 from app.models import (ImportRun, SourceRecord, Transaction, Account, Category,
                         NetWorthSnapshot, AccountValuation)
 
-IMPORTER_VERSION = "2-income-reclassification"
+IMPORTER_VERSION = "3-westpac-payroll-credit"
 WESTPAC_SHEET = "Transactions_Westpac_All!"
 YEAR_SHEET = re.compile(r"^Transactions_(\d{4})_NAB$", re.I)
 ALIASES = {
@@ -292,7 +292,7 @@ def import_bytes(blob, filename, force=False):
                 created += 1
             else:
                 updated += 1
-            typ = (rec["type"] + " " + rec["category"] + " " + rec["description"]).lower()
+            typ = (rec["type"] + " " + rec["category"] + " " + rec["description"] + " " + rec["merchant"]).lower()
             transfer = any(t in typ for t in (
                 "transfer", "tfr ", "cc payment", "credit card payment",
                 "internal", "osko payment"
@@ -311,8 +311,8 @@ def import_bytes(blob, filename, force=False):
             existing.merchant_raw = rec["merchant"]
             existing.merchant_normalized = rec["merchant"]
             existing.transfer_flag = transfer
-            existing.income_flag = explicit_income and rec["amount"] > 0 and not transfer
-            existing.excluded_from_spending = transfer
+            existing.income_flag = explicit_income and rec["amount"] > 0 and (not transfer or "salary" in typ or "payroll" in typ or "wages" in typ)
+            existing.excluded_from_spending = transfer and not existing.income_flag
             existing.source_run_id = run.id
             # SourceRecord has NOT NULL lineage fields: populate these before
             # adding a new record, so an autoflush cannot insert a partial row.
