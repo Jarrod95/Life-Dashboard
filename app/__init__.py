@@ -98,7 +98,8 @@ def create_app(test_config=None):
     if (app.config.get("LIFE_DATA_SOURCE") == "onedrive"
             and not app.config.get("TESTING")
             and os.getenv("LIFE_SYNC_ON_STARTUP", "true").lower() == "true"
-            and (not app.debug or os.getenv("WERKZEUG_RUN_MAIN") == "true")):
+            and (os.getenv("FLASK_DEBUG", "0").lower() not in ("1", "true")
+                 or os.getenv("WERKZEUG_RUN_MAIN") == "true")):
         from threading import Thread
         from time import sleep
         def poll_sources():
