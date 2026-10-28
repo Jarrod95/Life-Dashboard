@@ -48,6 +48,16 @@
 <tr><td colspan="4">No valuation line items available.</td></tr>{% endfor %}
 </tbody></table></div>
 {% endif %}
+{% if section == 'net-worth' %}
+<section class="panel">
+  <div class="panel-header"><div><h2>Offset account history & 12-month projection</h2>
+    <p class="muted" id="offset-status">Reading offset history…</p></div></div>
+  <div class="metrics" id="offset-metrics" aria-live="polite"></div>
+  <div class="chart-frame"><canvas id="offset-chart" tabindex="0" role="img" aria-label="Offset balance historical and projected line graph"></canvas></div>
+  <p class="muted" id="offset-note"></p>
+</section>
+<script defer src="{{ url_for('static',filename='js/offset-projection.js') }}"></script>
+{% endif %}
 {% if section == 'spending' %}
 <section class="panel" aria-label="Spending period">
   <div class="panel-header"><div><h2>Period</h2><p id="spending-coverage" class="muted" aria-live="polite">Loading transaction coverage…</p></div>
