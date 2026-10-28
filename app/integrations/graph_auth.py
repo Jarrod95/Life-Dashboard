@@ -132,7 +132,7 @@ def begin_connect(app):
                 with _lock:
                     if "access_token" in result:
                         if len(client().get_accounts()) != 1:
-                            _cache.clear()
+                            _cache.deserialize("{}")
                             _flow_state, _flow_message = "reconnect_required", "Single-account binding failed"
                         else:
                             _save_cache()
@@ -158,7 +158,7 @@ def disconnect():
     with _lock:
         if _active_flow:
             raise GraphAuthError("connect_pending", "Complete or cancel active sign-in first")
-        _cache.clear()
+        _cache.deserialize("{}")
         _client = None
         _flow_state, _flow_message = "not_connected", None
         if os.name == "nt":
