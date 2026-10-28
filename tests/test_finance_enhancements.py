@@ -2,6 +2,18 @@
 from datetime import date
 from decimal import Decimal
 from openpyxl import Workbook
+import pytest
+from app import create_app
+
+
+@pytest.fixture
+def app(tmp_path):
+    application = create_app({
+        "TESTING": True,
+        "WTF_CSRF_ENABLED": False,
+        "SQLALCHEMY_DATABASE_URI": "sqlite:///" + str(tmp_path / "finance-test.sqlite"),
+    })
+    yield application
 
 from app.finance import mortgage_tracking, spending
 from app.importer import import_bytes
