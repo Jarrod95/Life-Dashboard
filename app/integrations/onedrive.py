@@ -82,6 +82,9 @@ class OneDriveClient:
     def drive(self):
         return self._json(ROOT + "/me/drive")
 
+    def root(self):
+        return self._json(ROOT + "/me/drive/root")
+
     def get_item_by_path(self, drive_path):
         return self._json(ROOT + "/me/drive/root:/" + encode_path(drive_path))
 
