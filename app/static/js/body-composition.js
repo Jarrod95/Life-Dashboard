@@ -19,28 +19,33 @@ function renderGraph(id,data,field,unit,asBars=false){
  const day=d=>Date.parse(d+"T00:00:00Z"),msDay=86400000,last=rows.at(-1),first=rows[0];
  // Smooth historical values using the last seven OBSERVATIONS, never invented daily records.
  const average=rows.map((r,i)=>({...r,avg:rows.slice(Math.max(0,i-6),i+1).reduce((sum,v)=>sum+v[field],0)/Math.min(i+1,7)}));
- const recent=average.filter(p=>day(last.date)-day(p.date)<=180*msDay);
+ // Use up to the last 12 available observations across a 2-year history window.
+ // Irregular tape measurements can be months apart; don't require five within 180 days.
+ const eligible=average.filter(p=>day(last.date)-day(p.date)<=730*msDay);
+ const recent=eligible.slice(-12);
  const span=recent.length>1?(day(recent.at(-1).date)-day(recent[0].date))/msDay:0;
  let future=[],slope=0,spread=0;
- // Do not project one-point DEXA scans or sparse Evolt/body measurement history.
- if(!asBars&&recent.length>=5&&span>=30){
+ if(!asBars&&recent.length>=3&&span>=30){
    const xs=recent.map(p=>(day(p.date)-day(recent[0].date))/msDay),ys=recent.map(p=>p.avg);
    const mx=xs.reduce((a,b)=>a+b,0)/xs.length,my=ys.reduce((a,b)=>a+b,0)/ys.length;
    const denom=xs.reduce((a,x)=>a+(x-mx)**2,0);
    slope=denom?xs.reduce((a,x,i)=>a+(x-mx)*(ys[i]-my),0)/denom:0;
-   // A conservative bound limits extreme short-window extrapolation to 1% of the latest value per week.
    const bound=Math.max(.01,Math.abs(last[field])*.01)/7;
    slope=Math.max(-bound,Math.min(bound,slope));
    spread=Math.max(.01,Math.sqrt(xs.reduce((a,x,i)=>a+(ys[i]-(my+slope*(x-mx)))**2,0)/xs.length));
    const anchor=average.at(-1).avg;
-   for(let delta=0;delta<=180;delta+=15){
+   for(let delta=0;delta<=365;delta+=15){
      const futureDay=new Date(day(last.date)+delta*msDay).toISOString().slice(0,10);
      const value=Math.max(0,anchor+slope*delta),margin=spread*Math.sqrt(1+delta/30);
      future.push({date:futureDay,value,lower:Math.max(0,value-margin),upper:value+margin});
    }
+   if(future.at(-1).date!==new Date(day(last.date)+365*msDay).toISOString().slice(0,10)){
+     const delta=365,value=Math.max(0,anchor+slope*delta),margin=spread*Math.sqrt(1+delta/30);
+     future.push({date:new Date(day(last.date)+delta*msDay).toISOString().slice(0,10),value,lower:Math.max(0,value-margin),upper:value+margin});
+   }
  }
  const target=info;let selected=rows.length-1,coords=[];
- const touch=i=>{selected=Math.max(0,Math.min(i,rows.length-1));const p=rows[selected];target.textContent=p.date+" · Observed "+fmt(p[field])+" "+unit+" · 7-reading average "+fmt(average[selected].avg)+" "+unit+(future.length?" · six-month estimate "+fmt(future.at(-1).value)+" "+unit:" · projection unavailable (requires 5 readings over at least 30 days)");};
+ const touch=i=>{selected=Math.max(0,Math.min(i,rows.length-1));const p=rows[selected];target.textContent=p.date+" · Observed "+fmt(p[field])+" "+unit+" · 7-reading average "+fmt(average[selected].avg)+" "+unit+(future.length?" · 12-month estimate "+fmt(future.at(-1).value)+" "+unit:" · projection unavailable (requires 3 readings spanning at least 30 days within 2 years)");};
  const draw=()=>{
    const rect=canvas.getBoundingClientRect(),w=rect.width,h=rect.height;if(w<100||!h)return;
    const dpr=window.devicePixelRatio||1;canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);
@@ -70,7 +75,7 @@ function renderGraph(id,data,field,unit,asBars=false){
  canvas.addEventListener("keydown",ev=>{if(["ArrowRight","ArrowLeft","Home","End"].includes(ev.key)){ev.preventDefault();touch(ev.key==="Home"?0:ev.key==="End"?rows.length-1:selected+(ev.key==="ArrowLeft"?-1:1));}});
  new ResizeObserver(draw).observe(canvas);document.addEventListener("life-theme-change",draw);draw();touch(selected);
 }
-function chart(label,data,field,unit,bars=false){const id="bc-chart-"+series.length;series.push(id);panels.insertAdjacentHTML("beforeend",'<section class="panel"><h2>'+esc(label)+'</h2><div class="bc-chart"><canvas tabindex="0" role="img" aria-label="'+esc(label)+' by observation date" id="'+id+'"></canvas></div><p class="muted bc-chart-legend"><span>Blue solid: measured</span> · <span>Orange dotted: 7-reading average</span> · <span>Orange dashed: 6-month estimate</span> · <span>Shading: descriptive variation</span></p><p class="muted" id="'+id+'-info"></p></section>');renderGraph(id,data,field,unit,bars);}
+function chart(label,data,field,unit,bars=false){const id="bc-chart-"+series.length;series.push(id);panels.insertAdjacentHTML("beforeend",'<section class="panel"><h2>'+esc(label)+'</h2><div class="bc-chart"><canvas tabindex="0" role="img" aria-label="'+esc(label)+' by observation date" id="'+id+'"></canvas></div><p class="muted bc-chart-legend"><span>Blue solid: measured</span> · <span>Orange dotted: 7-reading average</span> · <span>Orange dashed: 12-month estimate</span> · <span>Shading: descriptive variation</span></p><p class="muted" id="'+id+'-info"></p></section>');renderGraph(id,data,field,unit,bars);}
 function regionBars(rows,field,label,unit){
  const usable=rows.filter(r=>typeof r[field]==="number"&&!String(r.Region||"").endsWith("Diff."));
  if(!usable.length)return;
