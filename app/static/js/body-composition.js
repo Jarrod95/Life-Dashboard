@@ -37,6 +37,14 @@ function renderGraph(id,data,field,unit,asBars=false){
  new ResizeObserver(draw).observe(canvas);document.addEventListener("life-theme-change",draw);draw();focus(selected);
 }
 function chart(label,data,field,unit,bars=false){const id="bc-chart-"+series.length;series.push(id);panels.insertAdjacentHTML("beforeend",'<section class="panel"><h2>'+esc(label)+'</h2><div class="bc-chart"><canvas tabindex="0" role="img" aria-label="'+esc(label)+' by observation date" id="'+id+'"></canvas></div><p class="muted" id="'+id+'-info"></p></section>');renderGraph(id,data,field,unit,bars);}
+function regionBars(rows,field,label,unit){
+ const usable=rows.filter(r=>typeof r[field]==="number"&&!String(r.Region||"").endsWith("Diff."));
+ if(!usable.length)return;
+ const id="bc-regions-"+series.length;series.push(id);
+ panels.insertAdjacentHTML("beforeend",'<section class="panel"><h2>'+esc(label)+'</h2><div class="bc-region-bars" id="'+id+'"></div><p class="muted">Individual and aggregate regions can overlap. Do not sum bars.</p></section>');
+ const max=Math.max(...usable.map(r=>r[field]))||1,container=document.getElementById(id);
+ usable.forEach(r=>{const item=document.createElement("div");item.className="bc-region-row";const name=document.createElement("span");name.textContent=r.Region;const rail=document.createElement("div");rail.className="bc-region-track";const bar=document.createElement("div");bar.className="bc-region-fill";bar.style.width=Math.max(0,100*r[field]/max)+"%";rail.appendChild(bar);const amount=document.createElement("strong");amount.textContent=fmt(r[field])+" "+unit;item.append(name,rail,amount);container.append(item);});
+}
 function exportCsv(rows){if(!rows.length)return;const keys=Object.keys(rows[0]);const quote=v=>'"'+String(v??"").replaceAll('"','""').replace(/^[=+@-]/,"'")+'"';const csv=[keys.join(","),...rows.map(r=>keys.map(k=>quote(r[k])).join(","))].join("\r\n");const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="body-composition.csv";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}
 function table(rows){
  tableRows=rows;page=0;renderTable();
@@ -62,7 +70,7 @@ async function load(){
  if(view==="overview"){const all=await get("overview");kpis.innerHTML=[["manual","Weight","kg"],["manual","Waist","cm"],["manual","Shoulders","cm"],["evolt","Total Body Fat Percentage","%"],["evolt","Lean Body Mass","kg"],["dexa","Tissue % Fat","%"]].map(([s,f,u])=>card(f,all[s]?.[f],u,all[s]?.date,s)).join("");const [manual,evolt]=await Promise.all([get("measurements"),get("evolt")]);chart("Manual weight",manual,"Weight","kg");chart("Waist",manual,"Waist","cm");chart("Evolt body fat",evolt,"Total Body Fat Percentage","%");chart("Evolt lean mass",evolt,"Lean Body Mass","kg");table([...manual].reverse());return;}
  const cfg=config[view],data=await get(cfg.url+params());kpiSet(data,cfg.metrics,view);
  cfg.metrics.forEach(([field,unit])=>chart(field,data,field,unit,view==="dexa"));
- if(view==="dexa"){const regions=await get("dexa/regions");chart("Regional fat mass (kg)",regions.map((r,i)=>({...r,date:r.date, "Fat_kg":r.Fat_kg})).filter(r=>!String(r.Region).endsWith("Diff.")),"Fat_kg","kg",true);table(regions);message.textContent="One DEXA scan cannot establish a longitudinal trend. Regional aggregates may overlap; do not sum these rows.";}
+ if(view==="dexa"){const regions=await get("dexa/regions");regionBars(regions,"Fat_kg","Regional fat mass","kg");regionBars(regions,"Lean_kg","Regional lean mass","kg");regionBars(regions,"Tissue_Fat_pct","Regional tissue fat","%");table(regions);message.textContent="One DEXA scan cannot establish a longitudinal trend. Regional aggregates may overlap; do not sum these rows.";}
  else table([...data].reverse());
 }
 document.getElementById("bc-filter").onclick=()=>load().catch(e=>message.textContent=e.message);
