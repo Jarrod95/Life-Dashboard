@@ -52,7 +52,10 @@ def resolve(client, key, saved=None):
     from app.integrations.onedrive import GraphError
     path = source_path(key)
     item = None
-    if saved is not None and saved.drive_id and saved.item_id:
+    selected = bool(saved and saved.selected_drive_id and saved.selected_item_id)
+    if selected:
+        item = client.get_item_by_id(saved.selected_drive_id, saved.selected_item_id)
+    elif saved is not None and saved.drive_id and saved.item_id and key != "gymday_latest_zip":
         try:
             item = client.get_item_by_id(saved.drive_id, saved.item_id)
         except GraphError as exc:
