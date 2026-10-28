@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow">FITNESS / BODY COMPOSITION</p><h1>Body composition</h1><p class="muted">Manual tape measurements, Evolt bioimpedance and DEXA results remain separate measurement methods.</p></div></div>
+<nav class="composition-tabs" aria-label="Body composition sections">
+{% for name,label in [('overview','Overview'),('measurements','Measurements'),('evolt','Evolt'),('dexa','DEXA'),('projections','Projections'),('data','Data health')] %}
+<a class="{{ 'active' if view==name else '' }}" href="/fitness/body-composition{{ '' if name=='overview' else '/'~name }}">{{ label }}</a>
+{% endfor %}
+</nav>
+<section class="composition" data-view="{{ view }}">
+<div class="composition-filter filters" id="composition-filters">
+<label>Year <select id="bc-year"><option value="">All years</option>{% for y in range(2022,2028) %}<option value="{{y}}">{{y}}</option>{% endfor %}</select></label>
+<label>Month <select id="bc-month"><option value="">All months</option>{% for m in range(1,13) %}<option value="{{m}}">{{m}}</option>{% endfor %}</select></label>
+<button id="bc-filter" type="button">Apply filters</button><button id="bc-reset" type="button">Reset</button>
+</div>
+<p id="bc-message" class="muted" role="status"></p>
+<div id="bc-kpis" class="metrics"></div>
+<div id="bc-panels" class="composition-grid"></div>
+<div class="panel"><div class="panel-header"><h2 id="bc-table-title">Source measurements</h2><button id="bc-download" type="button">Export filtered CSV</button></div><div class="table-scroll"><table id="bc-table"><thead></thead><tbody></tbody></table></div><div class="pagination"><button id="bc-prev" type="button">Previous</button><span id="bc-page"></span><button id="bc-next" type="button">Next</button></div></div>
+</section>
+<link rel="stylesheet" href="{{ url_for('static',filename='css/body-composition.css') }}">
+<script defer src="{{ url_for('static',filename='js/body-composition.js') }}"></script>
+{% endblock %}
