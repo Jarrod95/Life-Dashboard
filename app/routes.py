@@ -34,8 +34,10 @@ def date_args():
 
 @site.get("/")
 def home():
+    from app.body_composition import overview_data, status_data
     return render_template("dashboard.html", section="overview", title="Overview",
-                           data=summary(), spending=spending(), networth=timeline())
+                           data=summary(), spending=spending(), networth=timeline(),
+                           composition=overview_data(), composition_status=status_data())
 
 
 @site.get("/finance")
@@ -76,8 +78,10 @@ def value_error(exc):
 
 @api.get("/overview")
 def overview_api():
-    return jsonify(finance=summary(), fitness={"status": "not_configured"},
-                   health={"status": "not_configured"}, goals={"status": "not_configured"})
+    from app.body_composition import overview_data, status_data
+    from app.life_summary import other_sources
+    return jsonify(data={"finance": summary(), "body_composition": overview_data(),
+                         "other_sources": other_sources()}, meta={"body_composition": status_data()})
 
 
 @api.get("/finance/summary")
