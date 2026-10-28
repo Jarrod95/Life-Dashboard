@@ -194,6 +194,8 @@ def load_zip(path):
         infos = z.infolist()
         if len(infos) > 500 or sum(i.file_size for i in infos) > 120_000_000:
             raise ValueError("Excessive archive expansion")
+        if z.testzip() is not None:
+            raise ValueError("ZIP CRC validation failed")
         for info in infos:
             p = PurePosixPath(info.filename)
             if p.is_absolute() or ".." in p.parts or "\\" in info.filename:
