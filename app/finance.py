@@ -229,9 +229,13 @@ def mortgage_tracking():
     from flask import current_app
     from app.importer import parse_date
 
-    source = (current_app.config.get("GRAPH_FINANCE_CACHE_PATH")
-              if current_app.config.get("LIFE_DATA_SOURCE") == "onedrive"
-              else current_app.config.get("SOURCE_WORKBOOK"))
+    if current_app.config.get("LIFE_DATA_SOURCE") == "onedrive":
+        cached = current_app.config.get("GRAPH_FINANCE_CACHE_PATH")
+        source = cached if cached and Path(cached).is_file() else (
+            current_app.config.get("SOURCE_WORKBOOK")
+            if current_app.config.get("LIFE_SYNC_LOCAL_FALLBACK") else None)
+    else:
+        source = current_app.config.get("SOURCE_WORKBOOK")
     if not source:
         return dict(status="not_configured", history=[], projection=[], indicators={},
                     message="LIFE_FINANCE_XLSX_PATH is empty in the running Flask process.")
