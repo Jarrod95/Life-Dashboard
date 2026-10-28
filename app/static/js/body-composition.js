@@ -14,7 +14,7 @@ function card(label,value,unit,date,source){return '<article class="metric"><spa
 async function get(url){const r=await fetch(base+"/"+url),j=await r.json();if(!r.ok)throw Error(j.error?.message||r.statusText);return j.data;}
 function renderGraph(id,data,field,unit,asBars=false){
  const canvas=document.getElementById(id),info=document.getElementById(id+"-info");if(!canvas)return;
- const rows=data.filter(x=>typeof x[field]==="number"&&Number.isFinite(x[field])&&/^\\d{4}-\\d{2}-\\d{2}$/.test(x.date)).sort((a,b)=>a.date.localeCompare(b.date));
+ const rows=data.filter(x=>typeof x[field]==="number"&&Number.isFinite(x[field])&&/^\d{4}-\d{2}-\d{2}$/.test(x.date)).sort((a,b)=>a.date.localeCompare(b.date));
  if(!rows.length){canvas.replaceWith(document.createTextNode("No observations for this metric."));return;}
  const day=d=>Date.parse(d+"T00:00:00Z"),msDay=86400000,last=rows.at(-1),first=rows[0];
  // Smooth historical values using the last seven OBSERVATIONS, never invented daily records.
