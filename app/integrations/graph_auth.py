@@ -104,6 +104,10 @@ def status():
         selected = account()
         if not selected:
             return {"status": "not_connected", "flow": _flow_state, "message": _flow_message}
+        try:
+            access_token()  # silent renewal only; never expose credentials to the browser
+        except GraphAuthError as exc:
+            return {"status": "reconnect_required", "code": exc.code, "message": str(exc)}
         username = selected.get("username", "")
         masked = username[:2] + "***" if username else "Connected account"
         return {"status": "connected" if _flow_state != "reconnect_required" else "reconnect_required",
@@ -117,6 +121,8 @@ def begin_connect(app):
     with _lock:
         if _active_flow:
             raise GraphAuthError("already_connecting", "Connection is already in progress")
+        if account() is not None:
+            raise GraphAuthError("already_connected", "Disconnect before connecting a different account")
         flow = client().initiate_device_flow(scopes=scopes())
         if "user_code" not in flow:
             raise GraphAuthError("device_code_failed", "Microsoft did not provide a device code")
