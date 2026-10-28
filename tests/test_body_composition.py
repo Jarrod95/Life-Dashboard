@@ -89,8 +89,8 @@ def test_inline_projection_navigation_and_assets(client):
     assert http.get("/fitness/body-composition/projections").status_code == 404
     javascript = http.get("/static/js/body-composition.js")
     assert javascript.status_code == 200
-    assert b"delta<=180" in javascript.data
-    assert b"recent.length>=5" in javascript.data
+    assert b"delta<=365" in javascript.data
+    assert b"recent.length>=3" in javascript.data
     assert b"bc-chart-legend" in javascript.data
 
 
@@ -100,3 +100,14 @@ def test_chart_date_filter_accepts_iso_dates(client):
     script = http.get("/static/js/body-composition.js").get_data(as_text=True)
     assert r"/^\d{4}-\d{2}-\d{2}$/" in script
     assert r"/^\\d{4}-\\d{2}-\\d{2}$/" not in script
+
+
+def test_twelve_month_forecast_uses_sparse_history(client):
+    """Frontend contract: use up to 12 historical readings, not 5 in 180 days."""
+    http, _ = client
+    script = http.get("/static/js/body-composition.js").get_data(as_text=True)
+    assert "eligible.slice(-12)" in script
+    assert "recent.length>=3&&span>=30" in script
+    assert "delta<=365" in script
+    assert "12-month estimate" in script
+    assert "recent.length>=5" not in script
