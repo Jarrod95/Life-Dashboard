@@ -93,6 +93,26 @@ def create_app(test_config=None):
                 app.logger.exception("Gym Day startup import failed; existing dashboard remains available")
     from app.graph_cli import register_cli
     register_cli(app)
+    # Non-blocking Graph polling runs only in the serving debug child or non-debug process.
+    # A cross-process file lock in the sync service prevents duplicate imports.
+    if (app.config.get("LIFE_DATA_SOURCE") == "onedrive"
+            and not app.config.get("TESTING")
+            and os.getenv("LIFE_SYNC_ON_STARTUP", "true").lower() == "true"
+            and (not app.debug or os.getenv("WERKZEUG_RUN_MAIN") == "true")):
+        from threading import Thread
+        from time import sleep
+        def poll_sources():
+            from app.services.sync import sync_all
+            sleep(3)
+            while True:
+                with app.app_context():
+                    try:
+                        sync_all(trigger="scheduled")
+                    except Exception:
+                        app.logger.warning("Scheduled Graph sync did not complete")
+                interval = max(5, int(os.getenv("LIFE_SYNC_INTERVAL_MINUTES", "60")))
+                sleep(interval * 60)
+        Thread(target=poll_sources, name="graph-sync", daemon=True).start()
     @app.get("/health")
     def healthcheck():
         return jsonify(status="ok", application="Life-Dashboard"), 200
