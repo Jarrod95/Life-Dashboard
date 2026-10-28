@@ -39,6 +39,8 @@
      status.textContent='Latest source observation: '+data.indicators.as_of;
      const fields=[['Mortgage outstanding','principal',aud],['Interest rate','interest_rate',v=>(Number(v)*100).toFixed(2)+'%'],
        ['Months remaining','months_remaining',v=>v],['Offset balance','offset',aud],
+       ['Annual calculated savings','annual_calculated_savings',aud],
+       ['Total calculated savings','total_calculated_savings',aud],
        ['Next estimated monthly interest','next_month_interest_estimate',aud],
        ['Estimated monthly offset saving','monthly_offset_interest_saving',aud],
        ['Estimated daily offset saving','daily_offset_interest_saving',aud],
