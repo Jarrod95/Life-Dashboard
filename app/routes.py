@@ -111,7 +111,7 @@ def snapshot_api(snapshot_id):
 
 @api.get("/finance/transactions")
 def transactions_api():
-    start, end = date_args()
+    start, end = spending_dates() if request.args.get("year") else date_args()
     try:
         page = int(request.args.get("page", "1"))
         size = int(request.args.get("page_size", "50"))
@@ -159,7 +159,7 @@ def category_update_api(transaction_id):
 
 @api.get("/finance/spending")
 def spending_api():
-    start, end = date_args()
+    start, end = spending_dates() if request.args.get("year") else date_args()
     grouping = request.args.get("group_by", "month")
     if grouping not in {"month", "year", "category", "merchant"}:
         return error("group_by must be month, year, category or merchant")
@@ -168,7 +168,11 @@ def spending_api():
 
 @api.get("/finance/spending/categories")
 def spending_categories_api():
-    start, end = date_args()
+    start, end = spending_dates() if request.args.get("year") else date_args()
+    if request.args.get("year"):
+        from app.finance_insights import summarize
+        return jsonify(data=summarize(spending_period())["categories"],
+                       from_date=start.isoformat(), to_date=end.isoformat())
     return jsonify(data=spending_categories(start, end),
                    from_date=start.isoformat() if start else None,
                    to_date=end.isoformat() if end else None)
@@ -178,6 +182,77 @@ def spending_categories_api():
 def spending_years_api():
     return jsonify(data=transaction_years())
 
+
+
+
+def spending_period():
+    from app.finance_insights import period
+    return period(request.args.get("year"), request.args.get("month"))
+
+
+def spending_dates():
+    """Explicit from/to dates take precedence over year/month for legacy consumers."""
+    if request.args.get("from") or request.args.get("to"):
+        return date_args()
+    p = spending_period()
+    return p["start"], p["end"]
+
+
+@api.get("/finance/spending/periods")
+def insights_periods_api():
+    from app.finance_insights import period, metadata
+    p = period()
+    from app.models import Transaction
+    rows = db.session.query(Transaction.date).all()
+    available = {}
+    for (day,) in rows:
+        available.setdefault(str(day.year), set()).add(day.month)
+    return jsonify(data={"years": p["years"], "months_by_year": {y: sorted(v) for y,v in available.items()},
+                         "default": metadata(p)})
+
+
+@api.get("/finance/spending/summary")
+def insights_summary_api():
+    from app.finance_insights import public_summary
+    return jsonify(data=public_summary(spending_period()))
+
+
+@api.get("/finance/spending/merchants")
+def insights_merchants_api():
+    from app.finance_insights import summarize
+    s = summarize(spending_period())
+    entries = s["merchants"]
+    sort = request.args.get("sort", "spend_desc")
+    if sort not in ("spend_desc", "spend_asc", "merchant", "count_desc"):
+        return error("Invalid merchant sort")
+    if sort == "spend_asc":
+        entries = list(reversed(entries))
+    elif sort == "merchant":
+        entries = sorted(entries, key=lambda item:item["merchant"])
+    elif sort == "count_desc":
+        entries = sorted(entries, key=lambda item:-item["transactions"])
+    return jsonify(data=entries[:500], total=len(entries), period=s["period"])
+
+
+@api.get("/finance/spending/insights")
+def insights_opportunities_api():
+    from app.finance_insights import summarize, opportunities
+    s = summarize(spending_period())
+    return jsonify(data=opportunities(s), period=s["period"], warnings=s["warnings"])
+
+
+@api.get("/finance/spending/recurring")
+def insights_recurring_api():
+    from app.finance_insights import summarize, recurring
+    s = summarize(spending_period())
+    return jsonify(data=recurring(s), period=s["period"], warnings=s["warnings"])
+
+
+@api.get("/finance/spending/cashflow")
+def insights_cashflow_api():
+    from app.finance_insights import summarize
+    s = summarize(spending_period())
+    return jsonify(data=s["cashflow"], period=s["period"])
 
 @api.get("/finance/income-audit")
 def income_audit_api():

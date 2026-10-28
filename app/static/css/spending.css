@@ -1,0 +1,10 @@
+/* Spending additions use existing Solarized variables and layout primitives. */
+#spending-opportunities table,#spending-merchants table,#spending-recurring table{width:100%;border-collapse:collapse}
+#spending-opportunities th,#spending-merchants th,#spending-recurring th{white-space:nowrap}
+.scenario-row{display:grid;grid-template-columns:minmax(12rem,1fr) minmax(8rem,2fr) 3.5rem;align-items:center;gap:1rem;margin:.85rem 0;color:var(--text-primary)}
+.scenario-row input{width:100%;accent-color:var(--accent)}
+.scenario-row output{font-variant-numeric:tabular-nums;text-align:right}
+.text-link{border:0;background:transparent;color:var(--accent);text-decoration:underline;cursor:pointer;font:inherit;padding:.1rem;text-align:left}
+.text-link:focus-visible,.scenario-row input:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+#spending-warnings:not(:empty){border-left:3px solid var(--solarized-orange);padding-left:1rem}
+@media(max-width:650px){.scenario-row{grid-template-columns:1fr 3rem}.scenario-row span{grid-column:1/-1}.scenario-row input{min-width:0}}

@@ -141,7 +141,19 @@
    });
    return points;
  });
- if(cash)fetchData('/api/v1/finance/spending?group_by=month').then(r=>{cash.data=r.data;cash.draw();}).catch(console.error);
+ if(cash){
+   let cashSequence=0;
+   const loadCash=async detail=>{
+     const token=++cashSequence;
+     const params=new URLSearchParams({group_by:'month'});
+     if(detail?.year){params.set('year',detail.year);params.set('month',detail.month||'all');}
+     try{const result=await fetchData(detail?.year?'/api/v1/finance/spending/cashflow?'+params:'/api/v1/finance/spending?'+params);
+       if(token!==cashSequence)return;cash.data=result.data;cash.draw();
+     }catch(err){if(token===cashSequence)console.error(err);}
+   };
+   if(!document.getElementById('spending-year'))loadCash();
+   document.addEventListener('life-spending-period-changed',event=>loadCash(event.detail));
+ }
  const category=chart('category-chart',(ctx,w,h,state)=>{
    const data=(state.data||[]).filter(x=>Number(x.spending)>0);
    if(!data.length){ctx.fillStyle=css('--text-muted');ctx.fillText('No positive net category expenses for this period.',16,30);return [];}
@@ -161,25 +173,20 @@
    return points;
  });
  if(category){
-   const year=document.getElementById('category-year'),month=document.getElementById('category-month');
-   const load=async()=>{
-     const params=new URLSearchParams(),y=year.value,m=month.value;
-     if(y==='all'&&m!=='all'){month.value='all';}
-     if(y!=='all'){
-       const from=y+'-'+(m==='all'?'01':m.padStart(2,'0'))+'-01';
-       const to=m==='all'?y+'-12-31':new Date(Date.UTC(Number(y),Number(m),0)).toISOString().slice(0,10);
-       params.set('from',from);params.set('to',to);
-     }
-     const result=await fetchData('/api/v1/finance/spending/categories?'+params);
-     category.data=result.data;category.focus=-1;category.tooltip.hidden=true;category.draw();
-     const total=result.data.reduce((sum,x)=>sum+Number(x.spending),0);
-     document.getElementById('category-total').textContent=
-       'Net spending: '+aud(total)+' · '+result.data.length+' categories'+
-       (result.data.length>12?' · 12 largest positive categories shown':'');
+   let categorySequence=0;
+   const loadCategory=async detail=>{
+     const token=++categorySequence;
+     const params=new URLSearchParams();
+     if(detail?.year){params.set('year',detail.year);params.set('month',detail.month||'all');}
+     try{const result=await fetchData('/api/v1/finance/spending/categories?'+params);
+       if(token!==categorySequence)return;
+       category.data=result.data;category.focus=-1;category.tooltip.hidden=true;category.draw();
+       const total=result.data.reduce((sum,x)=>sum+Number(x.spending),0);
+       document.getElementById('category-total').textContent='Net spending: '+aud(total)+' · '+result.data.length+' categories';
+     }catch(err){if(token===categorySequence)document.getElementById('category-total').textContent='Unable to load categories: '+err.message;}
    };
-   year.addEventListener('change',()=>{month.disabled=year.value==='all';if(month.disabled)month.value='all';load().catch(console.error);});
-   month.addEventListener('change',()=>load().catch(console.error));
-   month.disabled=year.value==='all';load().catch(console.error);
+   document.addEventListener('life-spending-period-changed',event=>loadCategory(event.detail));
  }
+
  document.addEventListener('life-theme-change',()=>charts.forEach(c=>c.draw()));
 })();

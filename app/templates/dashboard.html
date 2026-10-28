@@ -49,28 +49,26 @@
 </tbody></table></div>
 {% endif %}
 {% if section == 'spending' %}
-<div class="panel">
-  <div class="panel-header">
-    <div><h2>Spending by category</h2><p class="muted">Net category expenses, excluding transfers and classified income. Refunds reduce spending.</p></div>
-    <div class="filters chart-filters">
-      <label>Year<select id="category-year" aria-label="Spending year">
-        <option value="all">All years</option>
-        {% for year in years %}<option value="{{ year }}" {{ 'selected' if loop.first }}>{{ year }}</option>{% endfor %}
-      </select></label>
-      <label>Month<select id="category-month" aria-label="Spending month">
-        <option value="all">All months</option>
-        {% for month in range(1, 13) %}<option value="{{ month }}">{{ ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][month-1] }}</option>{% endfor %}
-      </select></label>
-    </div>
-  </div>
-  <div class="chart-frame categories"><canvas id="category-chart" role="img" aria-label="Spending by category horizontal bar chart"></canvas><div class="chart-tooltip" id="category-tooltip" role="status" hidden></div></div>
-  <p id="category-total" class="muted" aria-live="polite"></p>
+<section class="panel" aria-label="Spending period">
+  <div class="panel-header"><div><h2>Period</h2><p id="spending-coverage" class="muted" aria-live="polite">Loading transaction coverage…</p></div>
+  <div class="filters"><label>Year <select id="spending-year" aria-label="Spending year"></select></label>
+  <label>Month <select id="spending-month" aria-label="Spending month"><option value="all">All months</option>{% for m in range(1,13) %}<option value="{{ m }}">{{ ['January','February','March','April','May','June','July','August','September','October','November','December'][m-1] }}</option>{% endfor %}</select></label>
+  <button type="button" id="spending-reset">Reset</button></div></div>
+  <p class="muted" id="spending-warnings" aria-live="polite"></p>
+</section>
+<section class="metrics" id="spending-kpis" aria-label="Spending summary" aria-live="polite"></section>
+<div class="panel"><div class="panel-header"><div><h2>Spending by category</h2><p class="muted">Consumption only; unknown classifications are provisional.</p></div></div>
+  <div class="chart-frame categories"><canvas id="category-chart" role="img" aria-label="Spending by category"></canvas><div class="chart-tooltip" id="category-tooltip" role="status" hidden></div></div>
+  <p id="category-total" class="muted"></p>
 </div>
-<div class="panel">
-<div class="panel-header"><h2>Transaction explorer</h2><span class="muted">{{ tx_count }} imported transactions</span></div>
+<div class="panel"><h2>Savings opportunities</h2><p class="muted">Scenario-based suggestions, not established overspending or realised savings. Click a category to inspect transactions.</p><div id="spending-opportunities" class="table-scroll" aria-live="polite"></div></div>
+<div class="panel"><h2>Merchant spend</h2><p class="muted">Click a merchant to filter the transaction explorer.</p><div class="filters"><label>Sort <select id="merchant-sort"><option value="spend_desc">Highest spend</option><option value="spend_asc">Lowest spend</option><option value="count_desc">Most transactions</option><option value="merchant">Merchant name</option></select></label></div><div id="spending-merchants" class="table-scroll" aria-live="polite"></div></div>
+<div class="panel"><h2>Recurring expense candidates</h2><p class="muted">Cadences are inferred from at least three similar purchases. Next dates are estimates.</p><div id="spending-recurring" class="table-scroll" aria-live="polite"></div></div>
+<div class="panel"><h2>Savings scenario calculator</h2><p class="muted" id="savings-caveat">What-if reductions only. Annualisation assumes the selected period is representative.</p><div id="savings-scenarios" aria-live="polite"></div><div class="metrics"><article class="metric"><span>Hypothetical period saving</span><strong id="savings-period">$0.00</strong></article><article class="metric"><span>Hypothetical monthly equivalent</span><strong id="savings-month">$0.00</strong></article><article class="metric"><span>Hypothetical annualised saving</span><strong id="savings-year">$0.00</strong></article></div><button id="savings-reset" type="button">Reset assumptions</button></div>
+<div class="panel"><div class="panel-header"><h2>Transaction explorer</h2><span id="transaction-coverage" class="muted">Transactions in selected period</span></div>
 <form id="transaction-filters" class="filters">
- <label>From <input name="from" type="date"></label><label>To <input name="to" type="date"></label>
  <label>Category <select name="category"><option value="">All categories</option>{% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></label>
+ <label>Merchant <input name="merchant" placeholder="Merchant"></label>
  <label>Search <input name="search" placeholder="Merchant or description"></label>
  <label class="check"><input name="include_transfers" type="checkbox" value="true"> Include transfers</label>
  <button type="submit">Apply</button>
@@ -79,6 +77,8 @@
 <tbody id="transaction-rows"><tr><td colspan="5">Loading…</td></tr></tbody></table></div>
 <div class="pagination"><button id="tx-prev" type="button">Previous</button><span id="tx-page"></span><button id="tx-next" type="button">Next</button></div>
 </div>
+<link rel="stylesheet" href="{{ url_for('static',filename='css/spending.css') }}">
+<script defer src="{{ url_for('static',filename='js/spending-insights.js') }}"></script>
 {% endif %}
 {% if section == 'budget' %}
 <div class="panel"><h2>Budget source</h2><p class="empty">Budget assumptions must be verified against the original workbook input columns before figures can be trusted. No guessed annualisations have been published.</p></div>

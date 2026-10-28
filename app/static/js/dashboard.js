@@ -11,6 +11,7 @@
  if(filters){let page=1,total=1;
    const load=async()=>{const values=new FormData(filters),params=new URLSearchParams();
     for(const [key,value] of values.entries())if(value)params.set(key,value);
+    const globalYear=document.getElementById('spending-year');if(globalYear?.value){params.set('year',globalYear.value);params.set('month',document.getElementById('spending-month')?.value||'all');}
     params.set('page',page);const result=await request('/api/v1/finance/transactions?'+params);
     total=result.pages;const tbody=document.getElementById('transaction-rows');tbody.replaceChildren();
     for(const item of result.data){const tr=document.createElement('tr');
@@ -19,7 +20,8 @@
     if(!result.data.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=5;td.textContent='No matching transactions';tr.appendChild(td);tbody.appendChild(tr);}
     document.getElementById('tx-page').textContent=`Page ${page} of ${total||1} · ${result.total} records`;
     document.getElementById('tx-prev').disabled=page<=1;document.getElementById('tx-next').disabled=page>=total;};
-   filters.addEventListener('submit',e=>{e.preventDefault();page=1;load().catch(alert);});
+   filters.addEventListener('submit',e=>{e.preventDefault();page=1;load().catch(console.error);});
+   document.addEventListener('life-spending-period-changed',()=>{page=1;load().catch(console.error);});
    document.getElementById('tx-prev').addEventListener('click',()=>{page--;load().catch(alert);});
    document.getElementById('tx-next').addEventListener('click',()=>{page++;load().catch(alert);});load().catch(alert);
  }
