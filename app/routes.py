@@ -95,6 +95,12 @@ def networth_api():
     return jsonify(data=timeline(start, end), valuations=latest_valuations())
 
 
+@api.get("/finance/net-worth/offset")
+def offset_history_api():
+    from app.offset_projection import offset_history
+    return jsonify(data=offset_history())
+
+
 @api.get("/finance/net-worth/<int:snapshot_id>")
 def snapshot_api(snapshot_id):
     snapshot = db.session.get(NetWorthSnapshot, snapshot_id)
