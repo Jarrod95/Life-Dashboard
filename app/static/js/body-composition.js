@@ -70,7 +70,7 @@ function renderGraph(id,data,field,unit,asBars=false){
  canvas.addEventListener("keydown",ev=>{if(["ArrowRight","ArrowLeft","Home","End"].includes(ev.key)){ev.preventDefault();touch(ev.key==="Home"?0:ev.key==="End"?rows.length-1:selected+(ev.key==="ArrowLeft"?-1:1));}});
  new ResizeObserver(draw).observe(canvas);document.addEventListener("life-theme-change",draw);draw();touch(selected);
 }
-function chart(label,data,field,unit,bars=false){const id="bc-chart-"+series.length;series.push(id);panels.insertAdjacentHTML("beforeend",'<section class="panel"><h2>'+esc(label)+'</h2><div class="bc-chart"><canvas tabindex="0" role="img" aria-label="'+esc(label)+' by observation date" id="'+id+'"></canvas></div><p class="muted" id="'+id+'-info"></p></section>');renderGraph(id,data,field,unit,bars);}
+function chart(label,data,field,unit,bars=false){const id="bc-chart-"+series.length;series.push(id);panels.insertAdjacentHTML("beforeend",'<section class="panel"><h2>'+esc(label)+'</h2><div class="bc-chart"><canvas tabindex="0" role="img" aria-label="'+esc(label)+' by observation date" id="'+id+'"></canvas></div><p class="muted bc-chart-legend"><span>Blue solid: measured</span> · <span>Orange dotted: 7-reading average</span> · <span>Orange dashed: 6-month estimate</span> · <span>Shading: descriptive variation</span></p><p class="muted" id="'+id+'-info"></p></section>');renderGraph(id,data,field,unit,bars);}
 function regionBars(rows,field,label,unit){
  const usable=rows.filter(r=>typeof r[field]==="number"&&!String(r.Region||"").endsWith("Diff."));
  if(!usable.length)return;
