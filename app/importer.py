@@ -267,7 +267,8 @@ def import_bytes(blob, filename, force=False):
     profile = profile_bytes(blob, filename)
     if not profile["transactions"] and not profile["snapshots"]:
         raise ValueError("No usable financial data found")
-    prior = ImportRun.query.filter_by(sha256=profile["sha256"], status="completed").first()
+    prior = (ImportRun.query.filter_by(sha256=profile["sha256"], status="completed")
+             .order_by(ImportRun.id.desc()).first())
     if prior and prior.importer_version == IMPORTER_VERSION and not force:
         return dict(import_id=prior.id, status="unchanged", counts={"created": 0, "updated": 0})
     run = ImportRun(filename=Path(filename).name, sha256=profile["sha256"],
