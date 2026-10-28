@@ -244,7 +244,7 @@ def mortgage_tracking():
             return None
         # Exclude offset/equity/net-worth totals: only an outstanding loan balance qualifies.
         loan_row = pick(r"^(?:investment property |home |property )?(?:mortgage|home loan|housing loan)(?: balance| amount| outstanding)?$",
-                        r"^(?:mortgage|home loan|loan balance|mortgage outstanding)\\b")
+                        r"^(?=.*(?:mortgage|home loan|loan balance))(?!.*(?:offset|equity|interest|repayment|saving)).*$")
         if loan_row is None:
             return {"status": "unavailable", "history": [], "projection": [],
                     "indicators": {}, "message": "Mortgage principal row could not be uniquely identified in column A."}
