@@ -66,3 +66,51 @@ def test_westpac_salary_credit_is_income(app):
         march = next(row for row in rows if row["label"] == "2026-03")
         assert march["income"] == "4000.00"
         assert march["spending"] == "80.00"
+
+
+def test_stale_transfer_flag_does_not_suppress_payroll(app):
+    from app import db
+    from app.models import Transaction
+    from datetime import date
+    with app.app_context():
+        db.session.add(Transaction(
+            source_key="historical-payroll", date=date(2026, 5, 14),
+            signed_amount=Decimal("3600"), raw_description="SALARY Payroll",
+            transfer_flag=True, excluded_from_spending=True, income_flag=False,
+        ))
+        db.session.add(Transaction(
+            source_key="internal-transfer", date=date(2026, 5, 14),
+            signed_amount=Decimal("500"), raw_description="Internal transfer",
+            transfer_flag=True, excluded_from_spending=True, income_flag=False,
+        ))
+        db.session.commit()
+        may = next(x for x in spending(group_by="month") if x["label"] == "2026-05")
+        assert may["income"] == "3600.00"
+        assert may["spending"] == "0.00"
+
+
+def test_missing_workbook_reports_actual_path(app, tmp_path):
+    from app.finance import mortgage_tracking
+    missing = tmp_path / "Financial_Dashboard.xlsx"
+    with app.app_context():
+        app.config["SOURCE_WORKBOOK"] = str(missing)
+        result = mortgage_tracking()
+        assert result["status"] == "source_not_found"
+        assert str(missing) in result["message"]
+
+
+def test_underscore_filename_fallback(app, tmp_path):
+    from app.finance import mortgage_tracking
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Net Worth Tracking"
+    ws["A54"] = "Mortgage balance"
+    ws["B1"] = date(2026, 3, 1)
+    ws["B54"] = 400000
+    actual = tmp_path / "Financial Dashboard.xlsx"
+    wb.save(actual)
+    with app.app_context():
+        app.config["SOURCE_WORKBOOK"] = str(tmp_path / "Financial_Dashboard.xlsx")
+        result = mortgage_tracking()
+        assert result["status"] == "ok"
+        assert result["indicators"]["principal"] == "400000.00"
