@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-header"><p class="eyebrow">INTEGRATIONS</p><h1>Data sources</h1>
+<p>Cached SQLite records keep the dashboards available during OneDrive outages.</p></section>
+<div class="card" style="padding:1.5rem;margin-bottom:1rem">
+  <h2>Microsoft OneDrive</h2>
+  <p>Provider: <strong>{{ provider }}</strong> · Connection:
+  <strong id="graph-status">{{ graph.status }}</strong></p>
+  <p id="graph-account">{{ graph.account or graph.message or '' }}</p>
+  <p id="connection-help">This connection is limited to the local administrator. Microsoft account consent is required.</p>
+  <div style="display:flex;gap:1rem;flex-wrap:wrap">
+    <button type="button" id="graph-connect">Connect</button>
+    <button type="button" id="graph-disconnect">Disconnect</button>
+  </div>
+  <p id="login-instructions" aria-live="polite"></p>
+</div>
+<div class="card" style="padding:1.5rem">
+  <h2>Sync status</h2>
+  <table style="width:100%">
+    <thead><tr><th>Source</th><th>Status</th><th>Last success</th><th>Imported version</th><th>Action</th></tr></thead>
+    <tbody>
+    {% for s in sources %}
+      <tr><td>{{ s.source_key }}</td><td id="status-{{ s.source_key }}">{{ s.status }}
+       <small>{{ s.error_summary or '' }}</small></td>
+       <td>{{ s.last_success_at or 'Never' }}</td>
+       <td>{{ s.importer_version or '—' }}</td>
+       <td><button type="button" class="source-sync" data-key="{{ s.source_key }}">Sync now</button></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p id="sync-result" role="status" aria-live="polite"></p>
+</div>
+<script>
+(() => {
+  const token = document.querySelector('meta[name="csrf-token"]').content;
+  const result = document.getElementById('sync-result');
+  async function post(path, body={}) {
+    const r = await fetch(path, {method:'POST', credentials:'same-origin',
+      headers:{'X-CSRFToken':token,'Content-Type':'application/json'},
+      body:JSON.stringify(body)});
+    const value = await r.json();
+    if (!r.ok) throw Error(value.error?.message || value.data?.message || 'Request failed');
+    return value.data;
+  }
+  document.getElementById('graph-connect').addEventListener('click', async e => {
+    e.target.disabled=true;
+    try {
+      const value = await post('/api/v1/data-sources/graph/connect');
+      document.getElementById('login-instructions').textContent =
+        'Visit ' + value.verification_uri + ' and enter code ' + value.user_code;
+    } catch(err) { document.getElementById('login-instructions').textContent=err.message; }
+    finally {e.target.disabled=false;}
+  });
+  document.getElementById('graph-disconnect').addEventListener('click', async e => {
+    e.target.disabled=true;
+    try { await post('/api/v1/data-sources/graph/disconnect'); location.reload(); }
+    catch(err) { result.textContent=err.message; }
+    finally {e.target.disabled=false;}
+  });
+  document.querySelectorAll('.source-sync').forEach(b => b.addEventListener('click',async () => {
+    b.disabled=true; result.textContent='Synchronising ' + b.dataset.key + '…';
+    try { const value=await post('/api/v1/data-sources/' + b.dataset.key + '/sync');
+      result.textContent=b.dataset.key + ': ' + value.status; }
+    catch(err) { result.textContent=err.message; }
+    finally { b.disabled=false; }
+  }));
+  setInterval(async () => {
+    try { const r=await fetch('/api/v1/data-sources/graph/status');
+      const s=(await r.json()).data;
+      document.getElementById('graph-status').textContent=s.flow === 'pending' ? 'Connecting' : s.status;
+    } catch(_) {}
+  }, 5000);
+})();
+</script>
+{% endblock %}
