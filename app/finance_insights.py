@@ -186,20 +186,71 @@ def recurring(summary):
 
 
 def opportunities(summary):
-    suggestions = []
+    """Evidence-first discretionary candidates with 3 complete-month baselines."""
+    from datetime import date
+    from calendar import monthrange
+    end = date.fromisoformat(summary["period"]["end"])
+    start = date.fromisoformat(summary["period"]["start"])
+    # Compare the selected period's monthly rate with the prior three COMPLETE
+    # calendar months, never the partial month currently in progress.
+    first = date(start.year, start.month, 1)
+    last_prior = first - timedelta(days=1)
+    prior_start_month = last_prior.month - 2
+    prior_start_year = last_prior.year
+    if prior_start_month <= 0:
+        prior_start_month += 12
+        prior_start_year -= 1
+    prior_start = date(prior_start_year, prior_start_month, 1)
+    prior = records(dict(start=prior_start, end=last_prior))
     grouped = defaultdict(list)
+    historic = defaultdict(list)
     for row in summary["rows"]:
-        if row["purpose"] == "discretionary":
+        if row["purpose"] == "discretionary" and row["amount"] < 0:
             grouped[row["category"]].append(row)
-    for category,items in grouped.items():
-        value = sum((-x["amount"] for x in items),ZERO)
+    for row in prior:
+        if row["purpose"] == "discretionary" and row["amount"] < 0:
+            historic[row["category"]].append(row)
+    covered = {r["date"].strftime("%Y-%m") for r in prior}
+    valid_baseline = len(covered) == 3
+    # Normalize selected expense volume to monthly rates. Partial months are
+    # explicitly not compared with complete calendar months.
+    selected_months = 1 if summary["period"]["month"] else len({
+        r["date"].strftime("%Y-%m") for r in summary["rows"]})
+    selected_months = max(1, selected_months)
+    suggestions = []
+    for category, items in grouped.items():
+        value = sum((-x["amount"] for x in items), ZERO)
         if value <= 0 or len(items) < 2:
             continue
-        reduction = Decimal("0.20")
-        suggestions.append(dict(category=category, amount_aud=money(value), transactions=len(items),
-            suggested_reduction_pct=20, potential_period_saving_aud=money(value*reduction),
-            rationale=f'{len(items)} discretionary transactions in the selected period; consider a 20% reduction.',
-            confidence="medium" if summary["period"]["is_partial_period"] else "high",
+        count = len(items)
+        avg = value / count
+        baseline_total = sum((-x["amount"] for x in historic[category]), ZERO)
+        baseline_monthly = baseline_total / 3 if valid_baseline else None
+        current_monthly = value / selected_months
+        change_pct = (current_monthly / baseline_monthly - 1) * 100 if (
+            baseline_monthly and baseline_monthly > 0
+            and not summary["period"]["is_partial_period"]) else None
+        if change_pct is not None and change_pct >= 20 and count >= 3:
+            reason = f'Monthly average {change_pct:.0f}% above the preceding three complete months; {count} purchases.'
+            signal = "increasing spend"
+            confidence = "medium" if summary["warnings"] else "high"
+        elif count >= 8:
+            reason = f'{count} purchases averaging ${money(avg)} each; review frequency or average ticket.'
+            signal = "frequent purchases"
+            confidence = "medium"
+        else:
+            reason = f'{count} purchases totalling ${money(value)}; review before assuming these repeat.'
+            signal = "spending review"
+            confidence = "needs review"
+        suggestions.append(dict(category=category, amount_aud=money(value), transactions=count,
+            average_ticket_aud=money(avg),
+            monthly_equivalent_aud=money(current_monthly),
+            baseline_monthly_aud=money(baseline_monthly) if baseline_monthly is not None else None,
+            change_pct=round(float(change_pct),1) if change_pct is not None else None,
+            baseline_label="Previous three complete months" if valid_baseline else "Insufficient comparable coverage",
+            signal=signal, suggested_reduction_pct=20,
+            potential_period_saving_aud=money(value*Decimal("0.20")),
+            rationale=reason, confidence=confidence,
             transaction_ids=[x["id"] for x in items]))
     return sorted(suggestions,key=lambda x:-Decimal(x["potential_period_saving_aud"]))
 
