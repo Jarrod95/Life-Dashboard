@@ -87,25 +87,33 @@
       if (!response.ok) throw Error(body.error?.message || 'Folder listing failed');
       locationLabel.textContent='Choose a folder or file (' + body.data.items.length + ' entries)';
       for (const item of body.data.items) {
-        const el=document.createElement('button');
-        el.type='button';
-        el.style.margin='0.25rem';
-        el.textContent=(item.kind==='folder'?'Folder: ':'File: ')+item.name;
-        el.addEventListener('click', async () => {
-          const key=document.getElementById('browse-source').value;
-          const chooseFolder=key==='gymday_latest_zip';
-          if (item.kind==='folder' && !chooseFolder) { await browseFolder(item.id); return; }
-          if (item.kind==='file' && chooseFolder) return;
-          el.disabled=true;
-          try {
-            const selected=await post('/api/v1/data-sources/'+key+'/select',
-              {drive_id:body.data.drive_id,item_id:item.id});
-            result.textContent=key+' source selected; click Sync now to import.';
-            if (item.kind==='folder') await browseFolder(item.id);
-          } catch(err) { result.textContent=err.message; }
-          finally { el.disabled=false; }
-        });
-        browse.append(el);
+        const line=document.createElement('div');
+        const title=document.createElement('span');
+        title.textContent=(item.kind==='folder'?'Folder: ':'File: ')+item.name+' ';
+        line.append(title);
+        if (item.kind==='folder') {
+          const open=document.createElement('button');
+          open.type='button'; open.textContent='Open';
+          open.addEventListener('click',()=>browseFolder(item.id));
+          line.append(open);
+        }
+        const key=document.getElementById('browse-source').value;
+        const suitable=(key==='gymday_latest_zip') === (item.kind==='folder');
+        if (suitable) {
+          const select=document.createElement('button');
+          select.type='button'; select.textContent='Select'; select.style.margin='0.25rem';
+          select.addEventListener('click',async () => {
+            select.disabled=true;
+            try {
+              await post('/api/v1/data-sources/'+key+'/select',
+                {drive_id:body.data.drive_id,item_id:item.id});
+              result.textContent=key+' source selected; click Sync now to import.';
+            } catch(err) { result.textContent=err.message; }
+            finally { select.disabled=false; }
+          });
+          line.append(select);
+        }
+        browse.append(line);
       }
     } catch(err) { locationLabel.textContent=err.message; }
   }
