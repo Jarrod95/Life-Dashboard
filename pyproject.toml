@@ -7,6 +7,7 @@ dependencies = ["Flask>=3.1,<4", "Flask-SQLAlchemy>=3.1,<4", "Flask-Migrate>=4,<
 dev = ["pytest>=8,<10", "ruff>=0.9,<1"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["graph_live: explicitly opted-in read-only personal Graph integration tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
