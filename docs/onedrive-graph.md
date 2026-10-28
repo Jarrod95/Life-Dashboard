@@ -38,7 +38,11 @@ An unattended token lifetime cannot be guaranteed.
    visit the Microsoft verification URL, enter the one-time code and consent.
    Alternatively run `flask graph-connect` in the same user environment.
 4. Run `flask graph-test`: verifies /me, drive and three configured sources.
-5. Run `flask sync-sources --all`, or sync individually from the UI.
+5. If a configured path cannot be resolved, use **Browse root** on the Data Sources
+   page, navigate to the expected folder and select the workbook or GymDay
+   export folder. Selected IDs are stored in SQLite; no source path or token is
+   exposed to other users.
+6. Run `flask sync-sources --all`, or sync individually from the UI.
 6. If tokens expire, reconnect. Dashboard analytics remain cached in SQLite.
 
 `flask sync-sources --source finance_workbook --force` reimports even when
@@ -72,10 +76,24 @@ dependency. The live connectivity check is deliberate and read-only:
 
 - This is not a multi-user web application; local action routes reject
   non-loopback requests. A reverse proxy could defeat that assumption.
-- No Graph upload, mutation, indefinite refresh guarantee, or general
-  folder discovery browser is included.
+- No Graph upload, mutation, or indefinite refresh guarantee. Folder
+  browsing is limited to the selected personal drive.
 - Graph permission failures can require consent or a new connection.
 - The finance importer commits its upserts before the managed mortgage
   cache file replacement; file-system failure may require a forced retry.
 - No unattended server authentication is available on a non-Windows host
   without additional approved token storage.
+
+## Optional live smoke test
+
+After explicitly approving read-only access, run:
+
+```powershell
+$env:RUN_GRAPH_LIVE_TESTS="1"
+python -m pytest -m graph_live -s
+Remove-Item Env:RUN_GRAPH_LIVE_TESTS
+```
+
+This checks identity, drive access, configured folder resolution and an
+in-memory body workbook sheet-name list. It does not print workbook values,
+modify OneDrive files or write production financial data to SQLite.
