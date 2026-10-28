@@ -78,7 +78,7 @@ def effective_income(t):
         return False
     if t.income_flag:
         return True
-    return bool(re.search(r"\\b(salary|payroll|wages)\\b",
+    return bool(re.search(r"\b(salary|payroll|wages)\b",
                           t.raw_description or "", re.I))
 
 
@@ -187,7 +187,7 @@ def income_audit():
         })
         line["westpac_rows"] += 1
         salary = t.signed_amount > 0 and bool(re.search(
-            r"\\b(salary|payroll|wages)\\b", t.raw_description or "", re.I))
+            r"\b(salary|payroll|wages)\b", t.raw_description or "", re.I))
         if salary:
             line["salary_marker_credits"] += 1
             line["salary_marker_amount"] += t.signed_amount
