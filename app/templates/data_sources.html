@@ -17,12 +17,14 @@
 <div class="card" style="padding:1.5rem">
   <h2>Sync status</h2>
   <table style="width:100%">
-    <thead><tr><th>Source</th><th>Status</th><th>Last success</th><th>Imported version</th><th>Action</th></tr></thead>
+    <thead><tr><th>Source</th><th>Status</th><th>Last checked</th><th>Last success</th><th>Origin</th><th>Importer</th><th>Action</th></tr></thead>
     <tbody>
     {% for s in sources %}
       <tr><td>{{ s.source_key }}</td><td id="status-{{ s.source_key }}">{{ s.status }}
        <small>{{ s.error_summary or '' }}</small></td>
+       <td>{{ s.last_checked_at or 'Never' }}</td>
        <td>{{ s.last_success_at or 'Never' }}</td>
+       <td>{{ s.last_source_type or '—' }}</td>
        <td>{{ s.importer_version or '—' }}</td>
        <td><button type="button" class="source-sync" data-key="{{ s.source_key }}">Sync now</button></td></tr>
     {% endfor %}
@@ -71,7 +73,8 @@
   document.querySelectorAll('.source-sync').forEach(b => b.addEventListener('click',async () => {
     b.disabled=true; result.textContent='Synchronising ' + b.dataset.key + '…';
     try { const value=await post('/api/v1/data-sources/' + b.dataset.key + '/sync');
-      result.textContent=b.dataset.key + ': ' + value.status; }
+      result.textContent=b.dataset.key + ': ' + value.status;
+      if (value.status !== 'already_running') location.reload(); }
     catch(err) { result.textContent=err.message; }
     finally { b.disabled=false; }
   }));
