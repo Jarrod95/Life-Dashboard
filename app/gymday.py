@@ -598,6 +598,13 @@ def api_records():
 
 @gym_api.get("/imports/status")
 def api_status():
+    if current_app.config.get("LIFE_DATA_SOURCE") == "onedrive":
+        from app.services.sync import statuses
+        remote = next((s for s in statuses() if s["source_key"] == "gymday_latest_zip"), {})
+        latest = GymImport.query.order_by(GymImport.id.desc()).first()
+        return jsonify(data={"latest": {"filename": latest.filename, "status": latest.status,
+                                       "counts": latest.counts, "warnings": latest.warnings}
+                             if latest else None, "discovery": remote})
     latest = GymImport.query.order_by(GymImport.id.desc()).first()
     try:
         archive, warnings = latest_archive()
@@ -615,6 +622,11 @@ def api_refresh():
     if not request.is_json and request.content_length:
         return jsonify(error={"message": "JSON request expected"}), 400
     try:
+        if current_app.config.get("LIFE_DATA_SOURCE") == "onedrive":
+            from app.services.sync import sync_one
+            if request.remote_addr not in ("127.0.0.1", "::1") and not current_app.config.get("TESTING"):
+                return jsonify(error={"code": "forbidden", "message": "Local admin only"}), 403
+            return jsonify(data=sync_one("gymday_latest_zip"))
         return jsonify(data=import_latest())
     except (ValueError, OSError, zipfile.BadZipFile, json.JSONDecodeError) as exc:
         return jsonify(error={"message": str(exc)}), 400
