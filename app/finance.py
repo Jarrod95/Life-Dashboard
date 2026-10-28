@@ -83,9 +83,12 @@ def effective_income(t):
 
 
 def spending(start=None, end=None, group_by="month"):
-    q = transaction_query(start, end, include_transfers=False).all()
+    q = transaction_query(start, end, include_transfers=True).all()
     groups = {}
     for t in q:
+        income = effective_income(t)
+        if not income and (t.excluded_from_spending or t.transfer_flag):
+            continue
         if group_by == "month":
             key = t.date.strftime("%Y-%m")
         elif group_by == "year":
@@ -96,7 +99,7 @@ def spending(start=None, end=None, group_by="month"):
             key = t.merchant_normalized or "Unknown"
         bucket = groups.setdefault(key, {"income": Decimal("0"), "spending": Decimal("0")})
         # Positive values not flagged as income are credits/refunds, reducing spending.
-        if effective_income(t):
+        if income:
             bucket["income"] += t.signed_amount
         else:
             bucket["spending"] -= t.signed_amount
@@ -151,8 +154,8 @@ def spending_categories(start=None, end=None):
 
     categories = {c.id: c.name for c in Category.query.all()}
     totals = {}
-    for txn in transaction_query(start, end, include_transfers=False).all():
-        if effective_income(txn):
+    for txn in transaction_query(start, end, include_transfers=True).all():
+        if effective_income(txn) or txn.transfer_flag or txn.excluded_from_spending:
             continue
         label = categories.get(txn.category_id, "Uncategorised")
         totals[label] = totals.get(label, Decimal("0")) - txn.signed_amount
@@ -225,9 +228,19 @@ def mortgage_tracking():
     from openpyxl import load_workbook
     from app.importer import parse_date
     source = current_app.config.get("SOURCE_WORKBOOK")
-    if not source or not Path(source).is_file():
+    if not source:
         return {"status": "not_configured", "history": [], "projection": [],
-                "indicators": {}, "message": "Configure LIFE_FINANCE_XLSX_PATH to read mortgage data."}
+                "indicators": {}, "message": "LIFE_FINANCE_XLSX_PATH is empty in the running Flask process. Restart the dashboard after editing .env."}
+    source_path = Path(str(source).strip().strip('"'))
+    if not source_path.is_file():
+        alternate = source_path.with_name(source_path.stem.replace("_", " ") + source_path.suffix)
+        if alternate != source_path and alternate.is_file():
+            source_path = alternate
+        else:
+            return {"status": "source_not_found", "history": [], "projection": [],
+                    "indicators": {}, "message": "Configured workbook was not found: " + str(source_path) +
+                    ". Check the exact filename (spaces versus underscores), OneDrive availability, and restart."}
+    source = source_path
     wb = load_workbook(source, read_only=True, data_only=True)
     try:
         if "Net Worth Tracking" not in wb:
