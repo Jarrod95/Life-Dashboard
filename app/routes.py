@@ -169,6 +169,10 @@ def spending_api():
 @api.get("/finance/spending/categories")
 def spending_categories_api():
     start, end = spending_dates() if request.args.get("year") else date_args()
+    if request.args.get("year"):
+        from app.finance_insights import summarize
+        return jsonify(data=summarize(spending_period())["categories"],
+                       from_date=start.isoformat(), to_date=end.isoformat())
     return jsonify(data=spending_categories(start, end),
                    from_date=start.isoformat() if start else None,
                    to_date=end.isoformat() if end else None)
