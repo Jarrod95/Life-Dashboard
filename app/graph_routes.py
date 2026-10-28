@@ -125,7 +125,7 @@ def select_source(source_key):
         if client.drive()["id"] != drive_id:
             return json_error(GraphError("forbidden", "Item must belong to the connected personal drive"), 403)
         item = client.get_item_by_id(drive_id, item_id)
-        expected = "folder" if source_key == "gymday_latest_zip" else "file"
+        expected = "folder" if source_key in ("gymday_latest_zip", "mfp_exports") else "file"
         if expected not in item:
             return json_error(GraphError("invalid_item", "Expected a " + expected))
         if expected == "file" and not item.get("name", "").lower().endswith(".xlsx"):
