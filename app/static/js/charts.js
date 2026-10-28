@@ -147,7 +147,7 @@
      const token=++cashSequence;
      const params=new URLSearchParams({group_by:'month'});
      if(detail?.year){params.set('year',detail.year);params.set('month',detail.month||'all');}
-     try{const result=await fetchData('/api/v1/finance/spending?'+params);
+     try{const result=await fetchData(detail?.year?'/api/v1/finance/spending/cashflow?'+params:'/api/v1/finance/spending?'+params);
        if(token!==cashSequence)return;cash.data=result.data;cash.draw();
      }catch(err){if(token===cashSequence)console.error(err);}
    };
