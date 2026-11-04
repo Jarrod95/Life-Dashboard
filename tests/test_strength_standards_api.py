@@ -12,7 +12,11 @@ RDL = "550e8400-e29b-41d4-a716-446655440001"
 
 
 @pytest.fixture
-def app(tmp_path):
+def app(tmp_path, monkeypatch):
+    # Never inherit a developer/VPS .env that points to OneDrive.
+    # The test exercises the synthetic CSV stored under tmp_path only.
+    from app import mfp
+    monkeypatch.setattr(mfp, "_cache", {})
     mapping = tmp_path / "strength-exercise-mapping.yaml"
     mapping.write_text(
         "mappings:\n  " + SQUAT + ":\n"
@@ -25,7 +29,8 @@ def app(tmp_path):
     app = create_app({
         "TESTING": True, "WTF_CSRF_ENABLED": False,
         "SQLALCHEMY_DATABASE_URI": "sqlite:///" + str(tmp_path / "test.sqlite"),
-        "MFP_DATA_DIR": str(tmp_path), "STRENGTH_MAPPING_PATH": str(mapping),
+        "MFP_DATA_DIR": str(tmp_path), "LIFE_DATA_SOURCE": "local",
+        "STRENGTH_MAPPING_PATH": str(mapping),
         "STRENGTH_STANDARD_SEX": "male", "BODY_COMPOSITION_IMPORT_ON_STARTUP": False,
     })
     with app.app_context():
@@ -208,7 +213,12 @@ def test_ui_static_contract(app):
     js = (root/"app/static/js/strength-standards.js").read_text()
     css = (root/"app/static/css/strength.css").read_text()
     assert "Your 1RM" in js and '"Good"' in js and '"Excellent"' in js and '"Elite"' in js
-    assert "Load</" not in js and 'label:"Load"' not in js and "axisTitle" not in js
+    # Validate chart-specific rendering rather than banning legitimate table terminology.
+    assert '<th scope="col">1RM (kg)</th>' in js
+    bar_renderer = js.split("function plotBars(", 1)[1].split("function drawProgress(", 1)[0]
+    assert 'label:"Load"' not in bar_renderer
+    assert "axisTitle" not in bar_renderer and "legend" not in bar_renderer
+    assert "ctx.fillText(b.label" in bar_renderer
     for name in ("--strength-bar-current", "--strength-bar-good",
                  "--strength-bar-excellent", "--strength-bar-elite"):
         assert name in js and name in css
@@ -238,3 +248,15 @@ def test_session_best_and_period_tie_break_without_duplicated_points(app):
         assert summary["best_set"]["session_id"] == "session-2"
         assert summary["best_set"]["set_id"] == "set-4"
         assert summary["best_set"]["date"] == "2026-10-02"
+
+
+def test_strength_fixture_uses_synthetic_local_mfp_even_when_env_is_onedrive(app, monkeypatch):
+    from app.mfp import source_dir, load
+    # The hosting user's LIFE_DATA_SOURCE may point at OneDrive; test config wins.
+    monkeypatch.setenv("LIFE_DATA_SOURCE", "onedrive")
+    with app.app_context():
+        assert app.config["LIFE_DATA_SOURCE"] == "local"
+        assert source_dir() == __import__("pathlib").Path(app.config["MFP_DATA_DIR"])
+        assert [(r["date"], r["weight_kg"]) for r in load("weight")] == [
+            ("2026-10-01", 88.0), ("2026-10-02", 87.0),
+        ]
