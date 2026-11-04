@@ -26,6 +26,7 @@ def git_blob_sha(data: bytes) -> str:
 def test_blob_verification_is_checkout_newline_independent():
     content = b'{\n  "example": 1\n}\n'
     assert git_blob_sha(content) == git_blob_sha(content.replace(b"\n", b"\r\n"))
+    assert git_blob_sha(content) != git_blob_sha(content.replace(b"1", b"2"))
 
 
 @pytest.fixture(scope="module")
