@@ -111,7 +111,7 @@ function render() {
     ? '<canvas id="standard-bars" class="strength-chart standards-bars" tabindex="0" role="img" aria-label="Your one-repetition maximum compared with Good, Excellent and Elite benchmark loads. Use arrow keys for values."></canvas>'+
       '<p id="standard-bars-detail" class="strength-tooltip" aria-live="polite">Focus or hover over a bar for its value.</p>'+
       '<div class="strength-table-wrap"><table class="strength-table"><caption>Benchmark loads in kilograms</caption>'+
-      '<thead><tr><th scope="col">Bar</th><th scope="col">Load</th></tr></thead><tbody>'+
+      '<thead><tr><th scope="col">Bar</th><th scope="col">1RM (kg)</th></tr></thead><tbody>'+
       [
         ["Your 1RM",best.one_rm_kg],["Good",d.benchmarks.good_kg],
         ["Excellent",d.benchmarks.excellent_kg],["Elite",d.benchmarks.elite_kg],
