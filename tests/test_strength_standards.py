@@ -12,6 +12,22 @@ from app.services.strength_standards import (
 )
 
 
+def git_blob_sha(data: bytes) -> str:
+    """Git stores LF blobs; Windows checkout may convert those bytes to CRLF.
+
+    Normalize only line endings, not JSON semantics or arbitrary whitespace,
+    so changing a benchmark threshold still fails the pinned-content test.
+    """
+    canonical = data.replace(b"\r\n", b"\n")
+    return hashlib.sha1(b"blob " + str(len(canonical)).encode("ascii")
+                        + b"\x00" + canonical).hexdigest()
+
+
+def test_blob_verification_is_checkout_newline_independent():
+    content = b'{\n  "example": 1\n}\n'
+    assert git_blob_sha(content) == git_blob_sha(content.replace(b"\n", b"\r\n"))
+
+
 @pytest.fixture(scope="module")
 def source():
     return read_benchmarks(str(SOURCE))[1]
@@ -20,7 +36,7 @@ def source():
 def test_source_is_pinned_and_complete(source):
     doc, movements = read_benchmarks(str(SOURCE))
     raw = Path(SOURCE).read_bytes()
-    assert hashlib.sha1(b"blob " + str(len(raw)).encode() + b"\x00" + raw).hexdigest() == "666475c049f989700409fa3863fbd1074dd7193a"
+    assert git_blob_sha(raw) == "666475c049f989700409fa3863fbd1074dd7193a"
     assert doc["version"] == "1.0.0"
     assert doc["source_commit"] == "1e9ead0019bd064e263fa0e42e583c66d9f06c6e"
     assert {r["movement"] for r in doc["movements"]} == set(movements)
