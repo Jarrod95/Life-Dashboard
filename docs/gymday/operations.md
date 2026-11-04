@@ -1,5 +1,7 @@
 # Gym Day strength analytics
 
+See [Strength Standards](../strength-standards.md) for bodyweight-specific barbell benchmarks, approved exercise IDs, historical bodyweight provenance and the new Strength Standards tab.
+
 ## Setup and operations
 Set `LIFE_GYMDAY_EXPORT_DIR` in your local `.env` (never commit that file) to the directory containing Gym Day `.zip` exports. Optionally set `LIFE_GYMDAY_IMPORT_ON_STARTUP=true`. No private ZIP is written into the repository, and imported data remains on your own SQLite database.
 

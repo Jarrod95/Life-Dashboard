@@ -47,6 +47,7 @@ def create_app(test_config=None):
         BODY_WEIGHT_GOAL_KG=os.getenv("BODY_WEIGHT_GOAL_KG", "84"),
         BODY_FAT_GOAL_PCT=os.getenv("BODY_FAT_GOAL_PCT", "8"),
         GYMDAY_EXPORT_DIR=os.getenv("LIFE_GYMDAY_EXPORT_DIR", ""),
+        STRENGTH_STANDARD_SEX=os.getenv("LIFE_STRENGTH_STANDARD_SEX", ""),
         MFP_DATA_DIR=os.getenv("LIFE_MFP_DATA_DIR") or None,
         **{key: os.getenv(key, default) for key, default in {
             "MFP_CALORIE_GOAL": "1800", "MFP_CARB_GOAL": "73",
@@ -60,6 +61,7 @@ def create_app(test_config=None):
     csrf.init_app(app)
     from app import models  # noqa: F401
     from app import gymday  # noqa: F401
+    from app import strength_standards_api  # noqa: F401
     from app import mfp  # noqa: F401
     from app import body_composition
     from app.routes import site, api
@@ -70,6 +72,7 @@ def create_app(test_config=None):
     app.register_blueprint(graph_api)
     app.register_blueprint(gymday.gym_pages)
     app.register_blueprint(gymday.gym_api)
+    app.register_blueprint(strength_standards_api.api)
     app.register_blueprint(mfp.mfp_pages)
     app.register_blueprint(mfp.mfp_api)
     app.register_blueprint(body_composition.pages)

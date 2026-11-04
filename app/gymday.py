@@ -638,6 +638,8 @@ def api_refresh():
 @gym_pages.get("/fitness/strength/history")
 @gym_pages.get("/fitness/strength/sessions/<session_id>")
 @gym_pages.get("/fitness/strength/records")
+@gym_pages.get("/fitness/strength/standards")
 @gym_pages.get("/fitness/strength/data")
 def strength_page(exercise_id=None, session_id=None):
-    return render_template("strength.html", title="Strength training", section="strength")
+    return render_template("strength.html", title="Strength training", section="strength",
+                           view="standards" if request.path.endswith("/standards") else "legacy")

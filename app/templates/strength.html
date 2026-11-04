@@ -2,10 +2,11 @@
 {% block content %}
 <link rel="stylesheet" href="{{ url_for('static',filename='css/strength.css') }}">
 <section class="strength">
-  <div class="strength-heading"><div><p class="eyebrow">FITNESS / PERFORMANCE</p><h1>Strength training</h1><p class="muted">Explore your sessions, training load, progress and records from Gym Day.</p></div><a class="button" href="/fitness/strength/data">Source health</a></div>
+  <div class="strength-heading"><div><p class="eyebrow">FITNESS / PERFORMANCE</p><h1>{{ "Strength Standards" if view == "standards" else "Strength training" }}</h1><p class="muted">{{ "Compare your estimated or observed 1RM with verified bodyweight-specific benchmarks." if view == "standards" else "Explore your sessions, training load, progress and records from Gym Day." }}</p></div><a class="button" href="/fitness/strength/data">Source health</a></div>
   <nav class="strength-tabs" aria-label="Strength views">
     <a href="/fitness/strength">Overview</a><a href="/fitness/strength/exercises">Exercises</a>
     <a href="/fitness/strength/history">History</a><a href="/fitness/strength/records">Records</a>
+    <a href="/fitness/strength/standards">Strength Standards</a>
     <a href="/fitness/strength/data">Data & sync</a>
   </nav>
   <form id="strength-filters" class="strength-filters">
@@ -18,5 +19,9 @@
   <p id="gym-error" role="alert" hidden></p>
   <div id="gym-view" aria-live="polite"><p class="muted">Loading strength data…</p></div>
 </section>
+{% if view == "standards" %}
+<script defer src="{{ url_for('static',filename='js/strength-standards.js') }}"></script>
+{% else %}
 <script defer src="{{ url_for('static',filename='js/strength.js') }}"></script>
+{% endif %}
 {% endblock %}

@@ -1,0 +1,4 @@
+# Only reviewed Gym Day exercise IDs may be rated. Get IDs from /api/v1/fitness/strength/standards/exercises.
+# Confirm movement, total barbell weight (bar included) and equipment before approval.
+# Never auto-map machines, dumbbells, RDLs or bodyweight lifts.
+mappings: {}
