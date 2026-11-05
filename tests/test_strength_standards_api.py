@@ -230,6 +230,12 @@ def test_ui_static_contract(app):
                  "--strength-bar-excellent", "--strength-bar-elite"):
         assert name in js and name in css
     assert "life-theme-change" in js and "ResizeObserver" in js
+    assert 'id="standard-sex"' in js
+    assert 'id="standard-table-all"' in js
+    assert 'params.set("window","90d")' in js
+    assert "reloadCatalog()" in js
+    assert "peak 90-day bodyweight" in js.lower()
+    assert "Heaviest set" in js
 
 
 def test_session_best_and_period_tie_break_without_duplicated_points(app):
@@ -361,3 +367,36 @@ def test_benchmark_profile_must_be_valid(app):
     chosen = client.get(endpoint("/summary?exercise_id="+SQUAT,"&sex=female")).json["data"]
     assert chosen["status"] == "rated"
     assert chosen["benchmarks"]["good_kg"] != 90
+
+
+def test_alias_name_does_not_map_unsupported_variants_or_wrong_equipment(app):
+    squat_machine = "550e8400-e29b-41d4-a716-446655440007"
+    rdl = "550e8400-e29b-41d4-a716-446655440008"
+    with app.app_context():
+        db.session.add_all([
+            GymExercise(id=squat_machine, name="Barbell Squat", equipment="Smith Machine"),
+            GymExercise(id=rdl, name="Barbell Romanian Deadlift", equipment="Barbell"),
+        ])
+        db.session.add_all([
+            GymSessionExercise(id="se-machine", session_id="session-1",
+                               exercise_id=squat_machine),
+            GymSessionExercise(id="se-rdl", session_id="session-1",
+                               exercise_id=rdl),
+        ])
+        db.session.flush()
+        db.session.add_all([
+            GymSet(id="set-machine", session_exercise_id="se-machine", weight_kg=250,
+                   reps=3, complete=True, warmup=False),
+            GymSet(id="set-rdl-new", session_exercise_id="se-rdl", weight_kg=180,
+                   reps=6, complete=True, warmup=False),
+        ])
+        db.session.commit()
+        client = app.test_client()
+        for ident in (squat_machine, rdl):
+            row = client.get(endpoint("/summary?exercise_id="+ident,
+                                     "&sex=male")).json["data"]
+            assert row["status"] == "unrated_exercise"
+            assert row["relative_strength"] is not None
+            assert row["classification"] is None
+            assert row["benchmarks"] is None
+            assert row["next_milestone"] is None
