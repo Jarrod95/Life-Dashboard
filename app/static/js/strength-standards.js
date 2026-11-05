@@ -390,8 +390,14 @@ async function init() {
   applyFilters();
   if (!["90d","365d","all_time"].includes(params.get("window")))
     params.set("window","90d");
-  // Visible editable reference, never derived from the workout itself.
-  if (!["male","female"].includes(params.get("sex")))params.set("sex","male");
+  // Honour an explicit saved URL choice, otherwise the configured API profile.
+  // On a fresh personal dashboard without an .env setting, visibly default to
+  // the editable male reference rather than leaving all standards blank.
+  if (!["male","female"].includes(params.get("sex"))) {
+    const profile=await get("/metadata");
+    params.set("sex",["male","female"].includes(profile.data.sex_category)
+      ? profile.data.sex_category : "male");
+  }
   selected=params.get("exercise_id") || "";
   await reloadCatalog();
 }
