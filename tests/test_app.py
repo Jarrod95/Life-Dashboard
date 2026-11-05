@@ -178,10 +178,13 @@ def test_category_spending_api_filters_year_and_month_and_excludes_transfers(app
 
 def test_chart_ui_mountpoints(client):
     page = client.get("/finance/spending").get_data(as_text=True)
-    assert 'id="category-year"' in page
-    assert 'id="category-month"' in page
+    # Current spending period controls are scoped to the spending explorer;
+    # category-year/category-month were removed in the page redesign.
+    assert 'id="spending-year"' in page
+    assert 'id="spending-month"' in page
     assert 'id="category-chart"' in page
     assert 'id="spending-chart"' in page
+    assert 'js/spending-insights.js' in page
     assert 'js/charts.js' in page
     networth = client.get("/finance/net-worth").get_data(as_text=True)
     assert 'id="networth-chart"' in networth

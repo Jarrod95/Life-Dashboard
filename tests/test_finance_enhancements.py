@@ -12,6 +12,8 @@ def app(tmp_path):
         "TESTING": True,
         "WTF_CSRF_ENABLED": False,
         "SQLALCHEMY_DATABASE_URI": "sqlite:///" + str(tmp_path / "finance-test.sqlite"),
+        # Test the local workbook explicitly, never the operator's Graph cache.
+        "LIFE_DATA_SOURCE": "local",
     })
     yield application
 

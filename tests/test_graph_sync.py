@@ -10,9 +10,16 @@ from app.services.sync import sync_one
 
 @pytest.fixture
 def app(tmp_path):
-    return create_app({"TESTING": True, "WTF_CSRF_ENABLED": False,
+    application = create_app({"TESTING": True, "WTF_CSRF_ENABLED": False,
                        "LIFE_DATA_SOURCE": "onedrive", "LIFE_SYNC_LOCAL_FALLBACK": False,
                        "SQLALCHEMY_DATABASE_URI": "sqlite:///" + str(tmp_path / "test.sqlite")})
+    # FileLock uses app.instance_path, not the SQLite URI. Never compete with
+    # the running Life Dashboard or another test's sync lock on Windows.
+    isolated = tmp_path / "instance"
+    isolated.mkdir()
+    application.instance_path = str(isolated)
+    application.config["GRAPH_FINANCE_CACHE_PATH"] = str(isolated / "finance-graph-cache.xlsx")
+    return application
 
 
 class FakeClient:
@@ -85,3 +92,17 @@ def test_latest_export_order():
     b = {"name": "daily_strength_2026_10_21.zip", "id": "b",
          "lastModifiedDateTime": "2026-10-22T00:00:00Z"}
     assert max((a, b), key=export_rank) is b
+
+
+def test_sync_lock_uses_unique_test_instance(app, tmp_path):
+    from pathlib import Path
+    from filelock import FileLock
+    from app.services.sync import sync_one
+    root = Path(app.instance_path)
+    assert root == tmp_path / "instance"
+    assert root.is_dir()
+    assert app.config["GRAPH_FINANCE_CACHE_PATH"] == str(root / "finance-graph-cache.xlsx")
+    lock = FileLock(str(root / "sync-finance_workbook.lock"))
+    with app.app_context(), lock:
+        result = sync_one("finance_workbook", client=FakeClient(book()))
+        assert result == {"status": "already_running", "source_key": "finance_workbook"}

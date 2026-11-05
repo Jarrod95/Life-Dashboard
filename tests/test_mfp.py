@@ -5,7 +5,9 @@ from app import create_app
 
 
 @pytest.fixture
-def client(tmp_path):
+def client(tmp_path, monkeypatch):
+    from app import mfp
+    monkeypatch.setattr(mfp, "_cache", {})
     data = tmp_path / "mfp"
     data.mkdir()
     (data / "myfitnesspal_weight_history.csv").write_text(
@@ -20,7 +22,8 @@ def client(tmp_path):
         "date,meal,calories,protein_g,carbs_g,fat_g\n"
         "2026-04-01,Breakfast,350,20,40,8\n2026-04-01,Lunch,500,50,10,18\n", encoding="utf-8")
     app = create_app({"TESTING": True, "SQLALCHEMY_DATABASE_URI": "sqlite:///" + str(tmp_path / "test.sqlite"),
-                      "MFP_DATA_DIR": str(data), "GYMDAY_EXPORT_DIR": ""})
+                      "MFP_DATA_DIR": str(data), "LIFE_DATA_SOURCE": "local",
+                      "GYMDAY_EXPORT_DIR": ""})
     return app.test_client()
 
 
