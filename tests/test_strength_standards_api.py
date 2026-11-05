@@ -234,7 +234,7 @@ def test_ui_static_contract(app):
     assert 'id="standard-table-all"' in js
     assert 'params.set("window","90d")' in js
     assert "reloadCatalog()" in js
-    assert "peak 90-day bodyweight" in js.lower()
+    assert "peak bodyweight from trailing 90 days" in js.lower()
     assert "Heaviest set" in js
 
 
