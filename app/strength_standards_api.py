@@ -41,12 +41,13 @@ def _catalog(approved, source, records):
         movement = approved.get(exercise.id)
         if not records.get(exercise.id) and not movement:
             continue
-        rated = bool(movement and movement in lookup and sex)
+        rated = bool(movement and movement in lookup and sex and records.get(exercise.id))
         result.append({"id": exercise.id, "name": exercise.name, "equipment": exercise.equipment,
                        "movement": movement, "rated": rated,
                        "group": "Rated exercises" if rated else "Unrated exercises",
                        "eligible_sessions": len(records.get(exercise.id, [])),
                        "coverage": ("rated" if rated else
+                                    "no_valid_sets" if not records.get(exercise.id) else
                                     "configuration_required" if movement and not sex else
                                     "benchmark_unavailable" if movement and movement not in lookup else
                                     "unrated_exercise")})
