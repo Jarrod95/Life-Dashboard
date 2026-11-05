@@ -73,8 +73,8 @@ function applyFilters() {
 function historyState() {window.history.replaceState(null, "", location.pathname + "?" + params.toString());}
 function labelPeriod(item) {
   return item.period.window === "all_time"
-    ? "All-time best at current bodyweight (contextual only)"
-    : "Recent best e1RM · " + (item.period.window === "90d" ? "90 days" : "365 days");
+    ? "All-time heaviest eligible set · 90-day peak bodyweight at as-of date"
+    : "Heaviest eligible set · " + (item.period.window === "90d" ? "past 90 days" : "past 365 days");
 }
 function groupOptions(rows) {
   const group = (rated, title) => {
@@ -91,6 +91,9 @@ function controls() {
       '<label for="standard-exercise">Exercise<select id="standard-exercise">'+groupOptions(catalogue)+'</select></label>'+
       '<label for="standard-window">Performance range<select id="standard-window">'+
       '<option value="90d">90 days</option><option value="365d">365 days</option><option value="all_time">All time</option>'+
+      '</select></label>'+
+      '<label for="standard-sex">Benchmark reference<select id="standard-sex">'+
+      '<option value="male">Male</option><option value="female">Female</option>'+
       '</select></label></div><p id="standard-source" class="muted"></p>', "strength-full");
 }
 function render() {
@@ -119,11 +122,11 @@ function render() {
       '</tbody></table></div>'
     : noData("Benchmark comparison unavailable for this exercise: "+(d.reason || d.status));
   root.innerHTML = '<div class="strength-grid">'+currentControls+
-    kpi("Bodyweight used",weight ? kg(weight.weight_kg) : "Unavailable",
-        weight ? weight.source+" · "+weight.date+" · "+weight.age_days+" day(s) old" : "No weight within 14 days")+
-    kpi("Best 1RM",best ? kg(best.one_rm_kg) : "—",detail)+
-    kpi("Relative strength",ratio(d.relative_strength), "Best e1RM ÷ current bodyweight")+
-    kpi("Strength category",d.classification?.label || "Unrated", d.status)+
+    kpi("Peak bodyweight · 90d",weight ? kg(weight.weight_kg) : "Unavailable",
+        weight ? weight.source+" · "+weight.date+" · highest measured in past 90 days" : "No measured bodyweight in past 90 days")+
+    kpi("e1RM · heaviest set",best ? kg(best.one_rm_kg) : "—",detail)+
+    kpi("Relative strength",ratio(d.relative_strength), "e1RM of heaviest set ÷ peak 90-day bodyweight")+
+    kpi("Strength category",d.classification?.label || "Unrated", d.status === "rated" ? "Verified "+(source.sex_category||"")+" standard" : d.reason || d.status)+
     card("Next milestone",milestone,"strength-full")+
     card("Your lift vs strength standards",barInfo,"strength-half")+
     card("Relative-strength progression",
@@ -132,20 +135,23 @@ function render() {
       '<option value="kg">Estimated 1RM (kg)</option></select></div>'+
       '<canvas id="standard-progression" class="strength-chart standards-line" tabindex="0" role="img" aria-label="Historical strength by workout, arrow keys read individual observations."></canvas>'+
       '<p id="standard-progression-detail" class="strength-tooltip" aria-live="polite"></p>'+
-      '<p class="muted">Ratios use bodyweight dated on or before each workout, up to 14 days old. Missing measurements create gaps.</p>',
+      '<p class="muted">Each workout uses the highest recorded bodyweight in the preceding 90 days (no future readings). Missing measurements create gaps.</p>',
       "strength-half")+
     card("Workout evidence",historyTable(),"strength-full")+
     card("All exercise comparison",
       '<div class="strength-controls"><label for="standard-table-search">Filter table</label>'+
       '<input type="search" id="standard-table-search" placeholder="Exercise name or status">'+
-      '<a class="button" id="standard-export" href="'+esc(query("/comparison.csv"))+'">Export CSV</a></div>'+
+      '<label class="standards-include-unrated"><input type="checkbox" id="standard-table-all"> Show unrated exercises</label>'+
+      '<a class="button" id="standard-export" href="'+esc(query("/comparison.csv"))+'">Export all CSV</a></div>'+
       '<div id="standard-comparison-table"></div>',"strength-full")+
     '</div>';
   const ex = document.getElementById("standard-exercise");
   ex.value = selected;
-  document.getElementById("standard-window").value = params.get("window") || "365d";
+  document.getElementById("standard-window").value = params.get("window") || "90d";
+  document.getElementById("standard-sex").value = params.get("sex") || "male";
   const sourceEl = document.getElementById("standard-source");
-  sourceEl.textContent = sourceText;
+  sourceEl.textContent = sourceText+" · "+(source.sex_category==="female"?"Female":"Male")+
+    " benchmark · e1RM from heaviest eligible set · peak bodyweight from trailing 90 days";
   if (d.reason) sourceEl.textContent += " · "+d.reason;
   const search = document.getElementById("standard-search");
   search.addEventListener("input", () => {
@@ -158,10 +164,14 @@ function render() {
     selected = ex.value; params.set("exercise_id", selected); historyState(); refresh();
   });
   document.getElementById("standard-window").addEventListener("change", e => {
-    params.set("window", e.target.value); historyState(); refresh();
+    params.set("window", e.target.value); historyState(); reloadCatalog();
+  });
+  document.getElementById("standard-sex").addEventListener("change", e => {
+    params.set("sex", e.target.value); historyState(); reloadCatalog();
   });
   document.getElementById("standard-progress-mode").addEventListener("change", drawProgress);
   document.getElementById("standard-table-search").addEventListener("input", drawComparison);
+  document.getElementById("standard-table-all").addEventListener("change", drawComparison);
   if (d.status === "rated" && d.benchmarks) {
     chartDisposers.push(plotBars("standard-bars", [
       {label:"Your 1RM",value:best.one_rm_kg,color:"--strength-bar-current"},
@@ -186,9 +196,11 @@ function drawComparison() {
   const element = document.getElementById("standard-comparison-table");
   if (!element) return;
   const filter = (document.getElementById("standard-table-search")?.value || "").toLocaleLowerCase();
-  const data = comparison.filter(r => (r.exercise+" "+r.status).toLocaleLowerCase().includes(filter)).slice();
+  const includeUnrated = document.getElementById("standard-table-all")?.checked;
+  const data = comparison.filter(r => (includeUnrated || r.status==="rated") &&
+    (r.exercise+" "+r.status+" "+(r.reason||"")).toLocaleLowerCase().includes(filter)).slice();
   const fields = [
-    ["exercise","Exercise"],["best_set","Best set"],["one_rm_kg","e1RM (kg)"],
+    ["exercise","Exercise"],["best_set","Heaviest set"],["one_rm_kg","e1RM (kg)"],
     ["bodyweight_kg","BW (kg)"],["ratio","Ratio"],["classification","Classification"],
     ["next_target_kg","Next target (kg)"],["gap_kg","Gap (kg)"],["last_record","Last record"]
   ];
@@ -204,8 +216,12 @@ function drawComparison() {
   const cell = (r,k) => {
     if (k === "exercise") return '<a href="/fitness/strength/exercises/'+encodeURIComponent(r.exercise_id)+'">'+esc(r.exercise)+'</a>'+
       (r.status !== "rated" ? '<small class="standards-reason">'+esc(r.reason||r.status)+'</small>' : "");
-    if (k === "best_set") return r.best_set ? kg(r.best_set.weight_kg)+" × "+r.best_set.reps : "—";
-    if (k === "one_rm_kg" || k === "bodyweight_kg" || k === "next_target_kg" || k === "gap_kg") return kg(r[k]);
+    if (k === "best_set") return r.best_set ? kg(r.best_set.weight_kg)+" × "+r.best_set.reps : "No sets in range";
+    if (k === "one_rm_kg" || k === "bodyweight_kg") return kg(r[k]);
+    if (k === "next_target_kg" || k === "gap_kg")
+      return r.status==="rated" ? (r[k] == null ? (k==="next_target_kg"?"Elite achieved":"0 kg") : kg(r[k]))
+        : "Not benchmarked";
+    if (k === "classification") return esc(r[k] || (r.status==="unrated_exercise"?"Not benchmarked":r.status));
     if (k === "ratio") return ratio(r[k]);
     return esc(r[k] ?? "—");
   };
@@ -214,7 +230,9 @@ function drawComparison() {
     fields.map(([field,name]) => '<th scope="col"'+(field === sorting.field ? ' aria-sort="'+(sorting.descending?"descending":"ascending")+'"' : "")+
       '><button type="button" data-sort="'+esc(field)+'">'+esc(name)+'</button></th>').join("")+
     '</tr></thead><tbody>'+data.map(r => '<tr>'+fields.map(([field])=>'<td>'+cell(r,field)+'</td>').join("")+'</tr>').join("")+
-    '</tbody></table></div>' : noData("No matching exercises.");
+    '</tbody></table></div>' : noData(includeUnrated ?
+      "No matching exercises in this period." :
+      "No rated exercises in this period. Choose a different range or show unrated exercises.");
   element.querySelectorAll("[data-sort]").forEach(b => b.addEventListener("click", () => {
     const field = b.dataset.sort;
     sorting = {field,descending:sorting.field===field?!sorting.descending:false}; drawComparison();
@@ -346,19 +364,46 @@ async function refresh() {
     root.innerHTML=noData("Unable to load the selected exercise. Check sources and filters.");
   } finally {if(seq===requestId)root.setAttribute("aria-busy","false");}
 }
-async function init() {
-  applyFilters();
+async function reloadCatalog() {
   try {
     const list=await get("/exercises");
     catalogue=list.data;
-    if (!catalogue.length) {root.innerHTML=noData("No valid Gym Day workout sets imported. Sync an export to begin.");return;}
-    const requested=params.get("exercise_id");
-    selected=catalogue.some(r=>r.id===requested)?requested:(catalogue.find(r=>r.rated && r.eligible_sessions)||catalogue.find(r=>r.eligible_sessions)||catalogue[0]).id;
+    if (!catalogue.length) {
+      root.innerHTML=noData("No Gym Day working sets imported. Sync an export to begin.");
+      return;
+    }
+    const candidate=catalogue.find(r=>r.id===selected);
+    // Never default to an empty movement such as Ab Wheel Rollout.
+    if (!candidate || !candidate.eligible_sessions) {
+      selected=(catalogue.find(r=>r.rated && r.eligible_sessions) ||
+        catalogue.find(r=>r.eligible_sessions) || catalogue[0]).id;
+    }
     params.set("exercise_id",selected);
-    if (!["90d","365d","all_time"].includes(params.get("window")))params.set("window","365d");
     historyState();
     await refresh();
-  } catch(e) {error.hidden=false;error.textContent=e.message;root.innerHTML=noData("Strength data unavailable.");}
+  } catch(e) {
+    error.hidden=false;error.textContent=e.message;
+    root.innerHTML=noData("Strength data unavailable.");
+  }
+}
+async function init() {
+  applyFilters();
+  try {
+    if (!["90d","365d","all_time"].includes(params.get("window")))
+      params.set("window","90d");
+    // Honour an explicit URL choice, otherwise the optional configured profile.
+    // A missing profile gets an EDITABLE, visible male reference on this personal page.
+    if (!["male","female"].includes(params.get("sex"))) {
+      const profile=await get("/metadata");
+      params.set("sex",["male","female"].includes(profile.data.sex_category)
+        ? profile.data.sex_category : "male");
+    }
+    selected=params.get("exercise_id") || "";
+    await reloadCatalog();
+  } catch(e) {
+    error.hidden=false;error.textContent=e.message || "Unable to initialise Strength Standards";
+    root.innerHTML=noData("Could not read Strength Standards sources.");
+  }
 }
 init();
 })();

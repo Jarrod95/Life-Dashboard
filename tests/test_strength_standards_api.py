@@ -81,6 +81,7 @@ def test_metadata_and_movement_catalog(app):
     assert data["provider_version"] == "1.0.0"
     assert data["license"].startswith("MIT")
     assert data["mapping_count"] == 1
+    assert data["bodyweight_method"] == "highest_90d"
     ids = {v["id"] for v in data["supported_movements"]}
     assert ids == {"back_squat","front_squat","overhead_squat",
                    "bench_press","strict_press","deadlift"}
@@ -95,24 +96,24 @@ def test_summary_bodyweight_and_milestones(app):
     assert data["best_set"]["one_rm_kg"] == 175
     assert data["best_set"]["one_rm_kind"] == "estimated"
     assert data["best_set"]["set_id"] == "set-1"
-    assert data["bodyweight"]["source"] == "mfp"
-    assert data["bodyweight"]["date"] == "2026-10-02"
-    assert data["bodyweight"]["age_days"] == 1
+    assert data["bodyweight"]["source"] == "manual"
+    assert data["bodyweight"]["date"] == "2026-09-30"
+    assert data["bodyweight"]["age_days"] == 3
     assert data["classification"]["label"] == "Excellent"
     assert data["classification"]["source_tier"] == "advanced_plus"
-    assert data["benchmarks"]["good_kg"] == 87
-    assert data["benchmarks"]["excellent_kg"] == 141.81
-    assert data["benchmarks"]["elite_kg"] == 195.75
-    assert data["next_milestone"]["gap_kg"] == 20.75
+    assert data["benchmarks"]["good_kg"] == 90
+    assert data["benchmarks"]["excellent_kg"] == 146.7
+    assert data["benchmarks"]["elite_kg"] == 202.5
+    assert data["next_milestone"]["gap_kg"] == 27.5
 
 
 def test_per_session_weight_is_not_current_weight(app):
     result = app.test_client().get(endpoint("/exercises/" + SQUAT + "/progress")).json["data"]
     assert len(result) == 1
     row = result[0]
-    assert row["bodyweight"]["weight_kg"] == 88
-    assert row["bodyweight"]["date"] == row["date"]
-    assert row["relative_strength"] == 175 / 88
+    assert row["bodyweight"]["weight_kg"] == 90
+    assert row["bodyweight"]["date"] == "2026-09-30"
+    assert row["relative_strength"] == 175 / 90
     assert row["classification"]["label"] == "Excellent"
 
 
@@ -121,7 +122,7 @@ def test_unmapped_exercise_ratio_only(app):
     assert item["status"] == "unrated_exercise"
     assert item["classification"] is None
     assert item["benchmarks"] is None
-    assert item["relative_strength"] == (160*(1+5/30))/87
+    assert item["relative_strength"] == (160*(1+5/30))/90
 
 
 def test_comparison_csv_and_safe_spreadsheet_values(app):
@@ -167,7 +168,13 @@ def test_manual_weight_fallback_when_mfp_missing(app, tmp_path):
     assert row["bodyweight"]["weight_kg"] == 90
 
 
-def test_stale_current_weight_fails_closed(app):
+def test_stale_current_weight_fails_closed(app, tmp_path):
+    # Both sources now contain only measurements outside the trailing 90 days.
+    (tmp_path / "myfitnesspal_weight_history.csv").write_text(
+        "date,weight_kg\\n2026-04-01,90\\n".replace("\\n", "\n"))
+    with app.app_context():
+        CompositionRow.query.delete()
+        db.session.commit()
     row = app.test_client().get(
         "/api/v1/fitness/strength/standards/summary?exercise_id="+SQUAT+
         "&as_of=2026-11-05&window=all_time").json["data"]
@@ -223,6 +230,12 @@ def test_ui_static_contract(app):
                  "--strength-bar-excellent", "--strength-bar-elite"):
         assert name in js and name in css
     assert "life-theme-change" in js and "ResizeObserver" in js
+    assert 'id="standard-sex"' in js
+    assert 'id="standard-table-all"' in js
+    assert 'params.set("window","90d")' in js
+    assert "reloadCatalog()" in js
+    assert "peak bodyweight from trailing 90 days" in js.lower()
+    assert "Heaviest set" in js
 
 
 def test_session_best_and_period_tie_break_without_duplicated_points(app):
@@ -260,3 +273,130 @@ def test_strength_fixture_uses_synthetic_local_mfp_even_when_env_is_onedrive(app
         assert [(r["date"], r["weight_kg"]) for r in load("weight")] == [
             ("2026-10-01", 88.0), ("2026-10-02", 87.0),
         ]
+
+
+def test_exact_barbell_alias_populates_classification_targets_and_gap(app):
+    bench = "550e8400-e29b-41d4-a716-446655440002"
+    with app.app_context():
+        db.session.add(GymExercise(id=bench, name="Barbell Bench Press",
+                                   equipment="Barbell"))
+        db.session.add(GymSessionExercise(id="se-bench", session_id="session-1",
+                                        exercise_id=bench))
+        db.session.flush()
+        db.session.add(GymSet(id="bench-set", session_exercise_id="se-bench",
+                              weight_kg=130, reps=6, complete=True, warmup=False))
+        db.session.commit()
+        client = app.test_client()
+        selected = client.get(endpoint("/summary?exercise_id="+bench,
+                                       "&sex=male")).json["data"]
+        assert selected["status"] == "rated"
+        assert selected["exercise"]["movement"] == "bench_press"
+        assert selected["best_set"]["weight_kg"] == 130
+        assert selected["best_set"]["one_rm_kg"] == 156
+        assert selected["bodyweight"]["weight_kg"] == 90
+        assert selected["classification"]["label"] in ("Good", "Excellent", "Elite")
+        assert selected["benchmarks"]["good_kg"] > 0
+        assert selected["benchmarks"]["elite_kg"] > selected["benchmarks"]["excellent_kg"]
+        assert selected["relative_strength"] == 156/90
+        all_rows = client.get(endpoint("/comparison?","&sex=male")).json["data"]
+        bench_row = next(r for r in all_rows if r["exercise_id"] == bench)
+        assert bench_row["classification"] == selected["classification"]["label"]
+        assert bench_row["bodyweight_kg"] == 90
+        assert bench_row["status"] == "rated"
+
+
+def test_explicit_id_rejection_overrides_barbell_alias(app, tmp_path):
+    p = tmp_path / "aliases.yaml"
+    p.write_text("mappings:\n  " + SQUAT +
+                 ":\n    approved: false\nname_mappings:\n"
+                 "  Barbell Back Squat: back_squat\n")
+    with app.app_context():
+        app.config["STRENGTH_MAPPING_PATH"] = str(p)
+        row = app.test_client().get(endpoint("/summary?exercise_id="+SQUAT,
+                                             "&sex=male")).json["data"]
+        assert row["status"] == "unrated_exercise"
+
+
+def test_heaviest_eligible_set_wins_even_if_its_e1rm_is_lower(app):
+    with app.app_context():
+        db.session.add(GymSet(id="heavy-single", session_exercise_id="se-1",
+                              weight_kg=165, reps=1, complete=True, warmup=False))
+        db.session.commit()
+        row = app.test_client().get(endpoint("/summary?exercise_id="+SQUAT)).json["data"]
+        assert row["best_set"]["set_id"] == "heavy-single"
+        assert row["best_set"]["weight_kg"] == 165
+        assert row["best_set"]["one_rm_kg"] == 165
+
+
+def test_default_90_day_window_excludes_older_heavier_load(app):
+    with app.app_context():
+        db.session.add(GymSession(id="session-old", name="Old leg day",
+                                 local_date=date(2026, 3, 1), active=True))
+        db.session.add(GymSessionExercise(id="se-old", session_id="session-old",
+                                        exercise_id=SQUAT))
+        db.session.flush()
+        db.session.add(GymSet(id="very-heavy-old", session_exercise_id="se-old",
+                              weight_kg=250, reps=1, complete=True, warmup=False))
+        db.session.commit()
+        client = app.test_client()
+        recent = client.get(endpoint("/summary?exercise_id="+SQUAT)).json["data"]
+        assert recent["period"]["window"] == "90d"
+        assert recent["best_set"]["set_id"] == "set-1"
+        all_time = client.get(endpoint("/summary?exercise_id="+SQUAT,
+                                       "&window=all_time")).json["data"]
+        assert all_time["best_set"]["set_id"] == "very-heavy-old"
+        catalog = client.get(endpoint("/exercises")).json["data"]
+        assert next(r for r in catalog if r["id"] == SQUAT)["eligible_sessions"] == 1
+
+
+def test_summary_shows_bodyweight_without_any_valid_sets(app):
+    wheel = "550e8400-e29b-41d4-a716-446655440006"
+    with app.app_context():
+        db.session.add(GymExercise(id=wheel, name="Ab Wheel Rollout", equipment=None))
+        db.session.commit()
+        row = app.test_client().get(endpoint("/summary?exercise_id="+wheel)).json["data"]
+        assert row["status"] == "no_valid_sets"
+        assert row["best_set"] is None
+        assert row["bodyweight"]["weight_kg"] == 90
+        assert row["classification"] is None
+
+
+def test_benchmark_profile_must_be_valid(app):
+    client = app.test_client()
+    assert client.get(endpoint("/summary?exercise_id="+SQUAT,"&sex=unknown")).status_code == 400
+    chosen = client.get(endpoint("/summary?exercise_id="+SQUAT,"&sex=female")).json["data"]
+    assert chosen["status"] == "rated"
+    assert chosen["benchmarks"]["good_kg"] != 90
+
+
+def test_alias_name_does_not_map_unsupported_variants_or_wrong_equipment(app):
+    squat_machine = "550e8400-e29b-41d4-a716-446655440007"
+    rdl = "550e8400-e29b-41d4-a716-446655440008"
+    with app.app_context():
+        db.session.add_all([
+            GymExercise(id=squat_machine, name="Barbell Squat", equipment="Smith Machine"),
+            GymExercise(id=rdl, name="Barbell Romanian Deadlift", equipment="Barbell"),
+        ])
+        db.session.add_all([
+            GymSessionExercise(id="se-machine", session_id="session-1",
+                               exercise_id=squat_machine),
+            GymSessionExercise(id="se-rdl", session_id="session-1",
+                               exercise_id=rdl),
+        ])
+        db.session.flush()
+        db.session.add_all([
+            GymSet(id="set-machine", session_exercise_id="se-machine", weight_kg=250,
+                   reps=3, complete=True, warmup=False),
+            GymSet(id="set-rdl-new", session_exercise_id="se-rdl", weight_kg=180,
+                   reps=6, complete=True, warmup=False),
+        ])
+        db.session.commit()
+        client = app.test_client()
+        for ident in (squat_machine, rdl):
+            row = client.get(endpoint("/summary?exercise_id="+ident,
+                                     "&sex=male")).json["data"]
+            assert row["status"] == "unrated_exercise"
+            assert row["relative_strength"] is not None
+            assert row["classification"] is None
+            assert row["benchmarks"] is None
+            assert row["next_milestone"] is None

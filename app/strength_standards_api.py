@@ -41,12 +41,13 @@ def _catalog(approved, source, records):
         movement = approved.get(exercise.id)
         if not records.get(exercise.id) and not movement:
             continue
-        rated = bool(movement and movement in lookup and sex)
+        rated = bool(movement and movement in lookup and sex and records.get(exercise.id))
         result.append({"id": exercise.id, "name": exercise.name, "equipment": exercise.equipment,
                        "movement": movement, "rated": rated,
                        "group": "Rated exercises" if rated else "Unrated exercises",
                        "eligible_sessions": len(records.get(exercise.id, [])),
                        "coverage": ("rated" if rated else
+                                    "no_valid_sets" if not records.get(exercise.id) else
                                     "configuration_required" if movement and not sex else
                                     "benchmark_unavailable" if movement and movement not in lookup else
                                     "unrated_exercise")})
@@ -68,16 +69,18 @@ def metadata():
         "mapping_count": len(mapped), "mapping_error": map_error,
         "license": "MIT — Copyright (c) 2026 OpenProgression",
         "source_url": "https://github.com/OpenProgression/openprogression",
-        "mapping_instruction": ("Use the immutable IDs from this API's /exercises endpoint; "
-                                "approve only exact barbell movement matches in "
-                                "config/strength-exercise-mapping.yaml, then restart the app.")})
+        "mapping_instruction": ("Exact barbell names from the approved name_mappings list "
+                                "are recognised, unless overridden by an explicit ID. "
+                                "Other exercises require verified immutable IDs in "
+                                "config/strength-exercise-mapping.yaml.")})
 
 
 @api.get("/exercises")
 def exercises():
     period, start, end, approved, map_error, source = _context()
-    # Catalog is based on eligible workout sessions, not guessed name matching.
-    rows = standards.session_records(None, end)
+    # Eligible sessions must match the selected range; older sessions should not
+    # make an empty current-period exercise look populated.
+    rows = standards.session_records(start, end)
     query = request.args.get("q", "").strip().casefold()
     if len(query) > 100:
         raise ValueError("Search query too long")

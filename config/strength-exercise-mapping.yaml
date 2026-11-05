@@ -1,4 +1,20 @@
-# Only reviewed Gym Day exercise IDs may be rated. Get IDs from /api/v1/fitness/strength/standards/exercises.
-# Confirm movement, total barbell weight (bar included) and equipment before approval.
-# Never auto-map machines, dumbbells, RDLs or bodyweight lifts.
+# Exact-name, reviewer-approved aliases for the Gym Day names confirmed in the
+# Strength Standards screenshot. Runtime exercise IDs remain opaque and stable.
+# No substring/fuzzy matching; ambiguous variants must NEVER inherit a standard.
+# A name alias applies only when equipment is Barbell or is unset and the
+# approved exact name itself begins with "Barbell ". A conflicting ID entry
+# in "mappings" wins, including approved:false to explicitly reject a name.
+#
+# Verify that exported set load includes the bar. If it does not, remove the
+# affected alias and add a reviewed UUID entry with approved:false.
 mappings: {}
+name_mappings:
+  "Barbell Bench Press": bench_press
+  "Barbell Squat": back_squat
+  "Barbell Back Squat": back_squat
+  "Barbell Deadlift": deadlift
+  "Barbell Deadlifts": deadlift
+  "Barbell Front Squat": front_squat
+  "Barbell Overhead Squat": overhead_squat
+  "Barbell Strict Press": strict_press
+  "Barbell Overhead Press": strict_press
