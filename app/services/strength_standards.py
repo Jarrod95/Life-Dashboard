@@ -10,11 +10,11 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import yaml
-from flask import current_app, request
+from flask import current_app, request, has_request_context
 
 from app import db
 from app.gymday import GymExercise, GymSession, GymSessionExercise, GymSet, bounds, e1rm
-from app.services.strength_bodyweight import histories, match_weight, weight_state
+from app.services.strength_bodyweight import histories, highest_weight, weight_state
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "config" / "strength-standards" / "openprogression-v1.0.0.json"
@@ -28,7 +28,12 @@ SYDNEY = ZoneInfo("Australia/Sydney")
 
 
 def sex_category():
-    raw = str(current_app.config.get("STRENGTH_STANDARD_SEX") or "").strip().lower()
+    """Explicit client-selected reference profile overrides optional local .env."""
+    supplied = request.args.get("sex") if has_request_context() else None
+    raw = str(supplied if supplied is not None else
+              current_app.config.get("STRENGTH_STANDARD_SEX") or "").strip().lower()
+    if supplied is not None and raw not in SEXES:
+        raise ValueError("sex must be male or female")
     return raw if raw in SEXES else None
 
 
@@ -74,16 +79,44 @@ def mappings():
         if not isinstance(body, dict) or not isinstance(body.get("mappings"), dict):
             raise ValueError("mappings must be a dictionary")
         approved = {}
+        explicit_ids = set()
         for ident, entry in body["mappings"].items():
             if not isinstance(ident, str) or not 1 <= len(ident) <= 80:
                 raise ValueError("Invalid Gym Day exercise ID in mapping")
-            if not isinstance(entry, dict) or entry.get("approved") is not True:
-                continue
+            if not isinstance(entry, dict):
+                raise ValueError("Invalid ID mapping")
+            explicit_ids.add(ident)
+            if entry.get("approved") is not True:
+                continue  # Explicit rejection blocks automatic aliases.
             if entry.get("load_convention") != "total_barbell_kg" or entry.get("benchmark_provider") != "openprogression":
                 raise ValueError("Approved mapping needs provider and total_barbell_kg")
             if not isinstance(entry.get("movement"), str):
                 raise ValueError("Approved mapping is missing movement ID")
             approved[ident] = entry["movement"]
+        aliases = body.get("name_mappings") or {}
+        if not isinstance(aliases, dict):
+            raise ValueError("name_mappings must be a dictionary")
+        # Only configured exact names; never substring-match or silently infer
+        # Romanian/Smith/decline/single-leg/assisted or bodyweight variants.
+        verified_names = {
+            "Barbell Bench Press", "Barbell Squat", "Barbell Back Squat",
+            "Barbell Deadlift", "Barbell Deadlifts", "Barbell Front Squat",
+            "Barbell Overhead Squat", "Barbell Strict Press", "Barbell Overhead Press"}
+        allowed = {"bench_press", "back_squat", "deadlift", "front_squat",
+                   "overhead_squat", "strict_press"}
+        if any(name not in verified_names or movement not in allowed
+               for name, movement in aliases.items()):
+            raise ValueError("Name mapping must use a reviewed exact barbell alias and movement")
+        if aliases:
+            for exercise in GymExercise.query.all():
+                if exercise.id in explicit_ids or exercise.name not in aliases:
+                    continue
+                equipment = (exercise.equipment or "").strip().casefold()
+                # A known non-barbell equipment is a hard veto. The exact
+                # 'Barbell ...' name permits a blank equipment field.
+                if equipment and "barbell" not in equipment:
+                    continue
+                approved[exercise.id] = aliases[exercise.name]
         return approved, None
     except (OSError, yaml.YAMLError, ValueError) as exc:
         return {}, "Missing or invalid strength exercise mapping configuration"
@@ -141,11 +174,11 @@ def to_record(session, record, value):
 
 
 def _key(row):
-    return (row["one_rm_kg"], row["date"], row["session_id"], row["set_id"])
+    return (row["weight_kg"], row["one_rm_kg"], row["date"], row["session_id"], row["set_id"])
 
 
 def selection_period():
-    window = request.args.get("window", "365d")
+    window = request.args.get("window", "90d")
     if window not in WINDOWS:
         raise ValueError("window must be 90d, 365d or all_time")
     today = datetime.now(SYDNEY).date()
@@ -166,7 +199,7 @@ def selection_period():
 
 
 def session_records(start, end, exercise_id=None):
-    """One bounded set query; best eligible set per session/exercise, no N+1 queries."""
+    """One bounded set query; heaviest eligible set per session/exercise, no N+1 queries."""
     q = (db.session.query(GymSession, GymSessionExercise, GymSet)
          .join(GymSessionExercise, GymSession.id == GymSessionExercise.session_id)
          .join(GymSet, GymSet.session_exercise_id == GymSessionExercise.id)
@@ -212,6 +245,7 @@ def meta(period=None):
                               "rx": "Elite"},
             "units": "kg", "sex_category": sex_category(),
             "source_note": "Simplified Life Dashboard categories; not population percentiles",
+            "bodyweight_method": "highest_90d", "set_selection": "heaviest_load",
             "population_note": "OpenProgression reference standards; not representative gym-goer percentiles",
             "source_error": error, "as_of": period["as_of"] if period else None}
 
@@ -232,9 +266,9 @@ def summary_for(exercise, records, history, period, approved, source):
     best = max(records, key=_key)
     result["best_set"] = best
     on = date.fromisoformat(period["as_of"])
-    bw = match_weight(history, on)
+    bw = highest_weight(history, on)
     if bw:
-        result["bodyweight"] = {**bw, "match_type": "current_recent"}
+        result["bodyweight"] = {**bw, "match_type": "highest_90d"}
         result["relative_strength"] = best["one_rm_kg"] / bw["weight_kg"]
     if not movement:
         result.update(status="unrated_exercise", reason="Exercise ID has no approved barbell mapping")
@@ -244,13 +278,13 @@ def summary_for(exercise, records, history, period, approved, source):
         result.update(status="benchmark_unavailable", reason="Mapped movement has no verified benchmark source")
     elif not bw:
         result.update(status=weight_state(history, on),
-                      reason="No dated bodyweight observation within the previous 14 days")
+                      reason="No valid recorded bodyweight within the preceding 90 days")
     else:
         rating = score(best["one_rm_kg"], bw["weight_kg"], movement, sex, lookup)
         result.update(rating or {})
         result["status"] = "rated"
         if period["window"] == "all_time":
-            result["reason"] = "All-time best at current bodyweight (contextual only)"
+            result["reason"] = "All-time heaviest set at trailing 90-day peak bodyweight (contextual only)"
     return result
 
 
@@ -261,7 +295,7 @@ def progress_for(exercise_id, records, history, approved, source):
     movement = approved.get(exercise_id)
     out = []
     for record in records:
-        bw = match_weight(history, date.fromisoformat(record["date"]))
+        bw = highest_weight(history, date.fromisoformat(record["date"]))
         rating = score(record["one_rm_kg"], bw["weight_kg"], movement, sex, lookup) if bw else None
         out.append({**record, "bodyweight": bw,
                     "relative_strength": record["one_rm_kg"] / bw["weight_kg"] if bw else None,
