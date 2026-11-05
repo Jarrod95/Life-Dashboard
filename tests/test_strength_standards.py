@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from app.gymday import GymSet, SYDNEY, timestamp
-from app.services.strength_bodyweight import match_weight, normalize, valid_weight, weight_state
+from app.services.strength_bodyweight import highest_weight, match_weight, normalize, valid_weight, weight_state
 from app.services.strength_standards import (
     SOURCE, TIERS, eligible, read_benchmarks, score,
 )
@@ -132,7 +132,7 @@ def test_stale_mfp_manual_fallback_and_future_not_used():
                                    "manual",weight_key="Weight")}
     assert match_weight(history,date(2026,10,3))["source"] == "manual"
     assert match_weight(history,date(2026,9,20)) is None
-    assert weight_state(history,date(2026,9,20)) == "stale_bodyweight"
+    assert weight_state(history,date(2026,9,20)) == "available"
     assert match_weight({"mfp": history["mfp"],"manual":{}},date(2026,8,1)) is None
 
 
@@ -151,3 +151,36 @@ def test_complete_drop_set_qualifies():
     row = GymSet(id="drop", weight_kg=90, reps=10,
                  complete=True, warmup=False, drop_set=True, failure=True)
     assert eligible(row) == 120
+
+
+def test_highest_90_day_bodyweight_not_latest_or_future():
+    history = {
+        "mfp": normalize([
+            {"date": "2026-07-01", "weight_kg": 115},  # outside 90 days
+            {"date": "2026-08-01", "weight_kg": 97},
+            {"date": "2026-10-02", "weight_kg": 86},  # newest is NOT the maximum
+            {"date": "2026-10-04", "weight_kg": 105}, # future is ignored
+        ], "mfp"),
+        "manual": normalize([
+            {"date": "2026-09-01", "Weight": 101},
+            {"date": "2026-10-02", "Weight": 104},  # duplicate date; MFP wins
+        ], "manual", weight_key="Weight"),
+    }
+    item = highest_weight(history, date(2026, 10, 3))
+    assert item["weight_kg"] == 101
+    assert item["source"] == "manual"
+    assert item["date"] == "2026-09-01"
+    assert item["method"] == "highest_90d"
+    assert item["period_end"] == "2026-10-03"
+    assert highest_weight(history, date(2026, 7, 30))["weight_kg"] == 115
+    assert highest_weight(history, date(2026, 6, 30)) is None
+
+
+def test_peak_weight_ties_choose_newest_observation_and_mfp():
+    history = {"mfp": normalize([{"date": "2026-10-02", "weight_kg": 95}], "mfp"),
+               "manual": normalize([{"date": "2026-09-01", "Weight": 95},
+                                    {"date": "2026-10-02", "Weight": 100}],
+                                   "manual", weight_key="Weight")}
+    item = highest_weight(history, date(2026, 10, 3))
+    assert item["source"] == "mfp" and item["date"] == "2026-10-02"
+    assert item["weight_kg"] == 95
