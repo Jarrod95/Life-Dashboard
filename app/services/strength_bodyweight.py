@@ -68,6 +68,35 @@ def match_weight(history, on: date, max_days: int = 14):
     return None
 
 
+
+def highest_weight(history, on: date, days: int = 90):
+    """Maximum recorded bodyweight in the trailing 90 calendar days, inclusive.
+
+    This is intentionally NOT the latest weigh-in. Read MFP and manual sources,
+    deduplicate identical dates with MFP precedence, then select the highest
+    valid measurement. Ties choose the newest day, then MFP. Never use future
+    weights; keep the measurement's provenance for the UI/CSV.
+    """
+    if days < 1:
+        raise ValueError("days must be >= 1")
+    from datetime import timedelta
+    start = on - timedelta(days=days - 1)
+    combined = {
+        day: record for day, record in history.get("manual", {}).items()
+        if start <= day <= on
+    }
+    combined.update({
+        day: record for day, record in history.get("mfp", {}).items()
+        if start <= day <= on
+    })
+    if not combined:
+        return None
+    day, record = max(combined.items(), key=lambda item: (
+        item[1]["weight_kg"], item[0], item[1]["source"] == "mfp"))
+    return {**record, "age_days": (on - day).days, "method": "highest_90d",
+            "period_start": start.isoformat(), "period_end": on.isoformat()}
+
+
 def weight_state(history, on: date):
     """Missing and stale are distinct; future observations cannot satisfy either."""
     if match_weight(history, on):
