@@ -23,7 +23,11 @@ def app(tmp_path, monkeypatch):
         "    movement: back_squat\n"
         "    benchmark_provider: openprogression\n"
         "    load_convention: total_barbell_kg\n"
-        "    approved: true\n")
+        "    approved: true\n"
+        # Keep the isolated fixture aligned with the exact-name alias contract.
+        # It intentionally does NOT silently load the production mapping file.
+        "name_mappings:\n"
+        "  Barbell Bench Press: bench_press\n")
     (tmp_path / "myfitnesspal_weight_history.csv").write_text(
         "date,weight_kg\n2026-10-01,88\n2026-10-02,87\n")
     app = create_app({
@@ -400,3 +404,25 @@ def test_alias_name_does_not_map_unsupported_variants_or_wrong_equipment(app):
             assert row["classification"] is None
             assert row["benchmarks"] is None
             assert row["next_milestone"] is None
+
+
+def test_name_mapping_is_opt_in_for_test_fixture(app, tmp_path):
+    """No implicit global aliases when a caller supplies its own mapping YAML."""
+    p = tmp_path / "no-name-aliases.yaml"
+    p.write_text("mappings: {}\\n".replace("\\n", "\n"))
+    bench = "550e8400-e29b-41d4-a716-446655440009"
+    with app.app_context():
+        db.session.add(GymExercise(id=bench, name="Barbell Bench Press",
+                                   equipment="Barbell"))
+        db.session.add(GymSessionExercise(id="se-noalias", session_id="session-1",
+                                        exercise_id=bench))
+        db.session.flush()
+        db.session.add(GymSet(id="set-noalias", session_exercise_id="se-noalias",
+                              weight_kg=130, reps=6, complete=True, warmup=False))
+        db.session.commit()
+        app.config["STRENGTH_MAPPING_PATH"] = str(p)
+        result = app.test_client().get(endpoint("/summary?exercise_id="+bench,
+                                                 "&sex=male")).json["data"]
+        assert result["status"] == "unrated_exercise"
+        assert result["classification"] is None
+        assert result["best_set"]["one_rm_kg"] == 156
