@@ -6,7 +6,9 @@ The **Strength Standards** tab at /fitness/strength/standards compares Gym Day w
 
 Existing data sources: imported Gym Day workouts, the cached MyFitnessPal weight-history CSV (local or OneDrive cache) and stored **manual** body-composition weights. Nothing is uploaded to the benchmark provider.
 
-Set LIFE_STRENGTH_STANDARD_SEX=male (or female) in your private .env file and restart the application. Only male and female benchmark datasets are provided; leave this setting empty to disable ratings. It is **never inferred** from workouts. The configuration file config/strength-exercise-mapping.yaml starts with **no approvals** because actual private imported IDs are unavailable in the repository.
+The visible **Benchmark reference** selector offers male and female source tables. The UI currently opens on the **male** reference for this personal dashboard; change it using the dropdown if inappropriate. This is a visible starting choice, **not inferred from workouts or biometric data**. APIs accept an explicit `sex=male|female` query; the older `LIFE_STRENGTH_STANDARD_SEX` private .env setting remains a fallback for direct API requests. If neither the query parameter nor the environment value is set, an API request fails closed with `configuration_required` instead of guessing. Only two benchmark categories exist upstream.
+
+`config/strength-exercise-mapping.yaml` contains narrowly approved **exact-name aliases** for the screenshot-confirmed Gym Day barbell names (Barbell Bench Press, Barbell Squat, Barbell Deadlifts, and canonical variants). This resolves immutable Gym Day IDs at runtime without guessing private UUIDs. An explicit ID entry takes precedence, including `approved: false` to block an alias. A known non-barbell equipment field vetoes the alias. Review whether each exported load includes the bar before relying on that rating.
 
 ### Inspect exercise IDs and approve exact mappings
 
@@ -18,7 +20,7 @@ Set LIFE_STRENGTH_STANDARD_SEX=male (or female) in your private .env file and re
     Select-Object id,name,equipment,eligible_sessions,movement,rated
 ~~~
 
-3. Confirm the **exact** imported Gym Day ID and equipment for a specific movement. Only genuine barbell back/front/overhead squat, flat bench press, standing strict overhead press and conventional deadlift may be mapped to the six supported IDs. Do not infer a mapping from name substrings, even when similar.
+3. Confirm the **exact** imported Gym Day ID, equipment and load convention for a specific movement. The only supported categories are barbell back/front/overhead squat, flat barbell bench press, standing strict overhead press and conventional barbell deadlift. Name aliases must match the *whole approved name*, never fuzzy or substring match. Do not substitute RDLs, JM presses, Bulgarian split squats, belt squats, machines, or other movements.
 4. In config/strength-exercise-mapping.yaml, use the verified actual exercise ID, the corresponding upstream movement ID and the fields below (the UUID shown is **illustrative only**, never a live default):
 
 ~~~yaml
@@ -30,7 +32,7 @@ mappings:
     approved: true
 ~~~
 
-5. Restart locally and confirm ratings. Total barbell weight means **bar included**. RDL, leg press, hack squat, hip thrust, machines, Smith/dumbbell presses, weighted bodyweight movements etc. remain **Unrated / Ratio only**. Those movements cannot borrow a different exercise's standards. There is no unauthenticated mapping write API.
+5. Restart locally and confirm ratings. Total barbell weight means **bar included**. RDL, leg press, hack squat, hip thrust, machines, Smith/dumbbell presses, weighted bodyweight movements etc. remain **Unrated / Ratio only**. Those movements cannot borrow a different exercise's standards. There is no unauthenticated mapping write API. The table defaults to **rated exercise rows only** to avoid an ocean of empty columns; tick **Show unrated exercises** for ratios and explicit “Not benchmarked” cells for unsupported variants. The CSV still includes all rows.
 
 ## Source, version and licence
 
@@ -61,13 +63,15 @@ The milestone thresholds are inclusive: bodyweight multiplied by intermediate, a
 
 ## Metric and bodyweight definitions
 
-Only active sessions and completed non-warmup sets with canonical finite kg > 0 and **whole reps 1–10** are scored. A single actual rep is labelled **observed 1RM**. For two through ten reps, use the existing Gym Day Epley calculation: kg × (1 + reps/30), labelled **estimated 1RM**. Complete drop sets count; source_onerm is never presented as a direct observation. Choose the highest eligible e1RM per session, then the highest in the selected period, breaking ties by newest workout date, session ID, then set ID. Preserve actual set, date, load, reps and observed/estimated provenance.
+Only active sessions and completed non-warmup sets with canonical finite kg > 0 and **whole reps 1–10** are scored. A single actual rep is labelled **observed 1RM**. For two through ten reps, use the existing Gym Day Epley calculation: kg × (1 + reps/30), labelled **estimated 1RM**. Complete drop sets count; source_onerm is never presented as a direct observation. Choose the **highest actually lifted kg** from eligible sets per session, then the heaviest recorded set in the selected period. Break ties by highest calculated e1RM, then newest workout date, session ID and set ID. The dashboard clearly labels the computed number **e1RM from heaviest set**: a lighter ten-rep set can have a larger Epley estimate, but does not override the requested heaviest-weight selection. Preserve actual set, date, load, reps and observed/estimated provenance.
 
-**Current summary:** default is best valid e1RM over 365 days, optionally 90 days or all time. Existing year/month/from/to filters **intersect** with this window. The summary uses the newest bodyweight on or before the selected as-of date, within 14 days. This is not necessarily bodyweight at the record set. All time is explicitly shown as **all-time best at current bodyweight (contextual only)**, never pretended simultaneous.
+**Current summary:** default is the **heaviest qualifying set in the past 90 days**. Optional 365-day and all-time views remain available; the range is applied before choosing the set, and year/month/from/to filters **intersect** with it. A historical all-time maximum is contextual rather than simultaneous with current bodyweight.
 
-**Historical chart:** each completed session uses its own weight **on or before its date**, at most 14 days old. Prefer MyFitnessPal date matching, then fallback to manual CompositionRow weight. An invalid duplicate cannot override an earlier valid measurement; last **valid** row within a source/day wins. No future readings or interpolation. Evolt/DEXA mass is deliberately excluded. Missing historical weight creates a ratio gap while retaining the absolute e1RM data point.
+**Bodyweight divisor:** take the **highest valid, actually measured bodyweight in the preceding 90 calendar days, inclusive of the as-of date**. Consider MFP and stored manual weight records, with MFP taking precedence for a duplicate *date*. Choose the maximum weight, breaking ties by newest day, then MFP. Ignore future records and exclude Evolt/DEXA mass or forecasts. Return the source, observed date, 90-day interval and method in API/CSV. If the whole 90-day interval lacks a weight, show unavailable and do not fabricate rankings. This deliberate peak-weight divisor is more conservative than the prior newest-within-14-days rule.
 
-Missing, stale (>14-day) or unavailable weight, absent sex choice, unapproved exercise or invalid benchmark yields explicit **no rating** and no fabricated milestone. Status values include rated, unrated_exercise, missing_bodyweight, stale_bodyweight, no_valid_sets, benchmark_unavailable, source_unavailable and configuration_required. MFP parses its existing cached CSV once per API request context; missing CSV falls back to stored manual weights. No future projected bodyweight is used for present ratings.
+**Historical chart:** each completed session uses the highest available bodyweight within the **90 days leading up to its own date**, with no lookahead. It considers MyFitnessPal plus manual CompositionRow observations. An invalid duplicate cannot override an earlier valid measurement; last **valid** row within a source/day wins. No future readings or interpolation. Evolt/DEXA mass is deliberately excluded. Missing historical weight creates a ratio gap while retaining the absolute e1RM data point.
+
+Missing, stale (>90-day) or unavailable weight, absent or invalid API sex choice, unapproved exercise or invalid benchmark yields explicit **no rating** and no fabricated milestone. Status values include rated, unrated_exercise, missing_bodyweight, stale_bodyweight, no_valid_sets, benchmark_unavailable, source_unavailable and configuration_required. MFP parses its existing cached CSV once per API request context; missing CSV falls back to stored manual weights. No future projected bodyweight is used for present ratings.
 
 ## Layout and data access
 
@@ -84,13 +88,13 @@ All under /api/v1/fitness/strength/standards:
 ~~~text
 GET /metadata
 GET /exercises?window=all_time
-GET /summary?exercise_id=<real-id>&window=365d
-GET /exercises/<real-id>/progress?window=90d
+GET /summary?exercise_id=<real-id>&window=90d&sex=male
+GET /exercises/<real-id>/progress?window=90d&sex=male
 GET /comparison?page=1&page_size=100
-GET /comparison.csv?year=2026&month=10&window=365d
+GET /comparison.csv?year=2026&month=10&window=90d&sex=male
 ~~~
 
-All JSON endpoints return data + meta or an error envelope. The summary includes period, best_set, bodyweight provenance, relative_strength, classification, benchmarks, next_milestone and status. Filters use Gym Day year/month/from/to intersection. Window values: 90d, 365d, all_time. Optional as_of=YYYY-MM-DD cannot be later than today's Sydney date; pagination size is 1–200.
+All JSON endpoints return data + meta or an error envelope. The summary includes period, best_set, bodyweight provenance, relative_strength, classification, benchmarks, next_milestone and status. Filters use Gym Day year/month/from/to intersection. Window values: 90d (default), 365d, all_time. The `sex` query accepts only male or female; the UI shows an editable reference selector. Exercises with no qualifying sets in the window are not preferred as the initial dropdown selection. The current comparison tab shows rated results first and can reveal unsupported exercises with status explanations. Optional as_of=YYYY-MM-DD cannot be later than today's Sydney date; pagination size is 1–200.
 
 **Security:** this existing local-first dashboard does **not** use login auth for its pre-existing Gym Day GET endpoints. These additions preserve that access model and do not claim stronger authentication. Keep the service on localhost or a controlled private network, not publicly exposed. Existing CSRF protections apply to mutating requests and were not changed. No new persistent tables, database mutations, credentials, private archives or personal weight CSVs are added to Git.
 
