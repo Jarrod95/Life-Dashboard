@@ -99,7 +99,7 @@ def highest_weight(history, on: date, days: int = 90):
 
 def weight_state(history, on: date):
     """Missing and stale are distinct; future observations cannot satisfy either."""
-    if match_weight(history, on):
+    if highest_weight(history, on):
         return "available"
     if any(d <= on for source in ("mfp", "manual") for d in history[source]):
         return "stale_bodyweight"
