@@ -260,15 +260,17 @@ def summary_for(exercise, records, history, period, approved, source):
               "period": period, "best_set": None, "bodyweight": None,
               "relative_strength": None, "classification": None, "benchmarks": None,
               "next_milestone": None, "status": "no_valid_sets", "reason": None}
-    if not records:
-        result["reason"] = "No completed non-warmup sets with 1–10 whole reps and valid kg"
-        return result
-    best = max(records, key=_key)
-    result["best_set"] = best
     on = date.fromisoformat(period["as_of"])
     bw = highest_weight(history, on)
     if bw:
         result["bodyweight"] = {**bw, "match_type": "highest_90d"}
+    # Weight provenance is useful even when the chosen exercise has no valid sets.
+    if not records:
+        result["reason"] = "No completed non-warmup sets with 1–10 whole reps and valid kg in the selected period"
+        return result
+    best = max(records, key=_key)
+    result["best_set"] = best
+    if bw:
         result["relative_strength"] = best["one_rm_kg"] / bw["weight_kg"]
     if not movement:
         result.update(status="unrated_exercise", reason="Exercise ID has no approved barbell mapping")
