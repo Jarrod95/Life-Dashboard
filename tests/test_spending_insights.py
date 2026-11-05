@@ -82,6 +82,12 @@ def test_api_period_consistency(app):
         assert summary["total_consumption_aud"]=="25.10"
         assert category==[{"category":"Restaurants","spending":"25.10"}]
         assert sum(Decimal(x["spend_aud"]) for x in merchants)==Decimal("25.10")
+        # Transaction explorer defaults to excluding internal transfers;
+        # finance summaries remain calculated separately.
         tx=client.get("/api/v1/finance/transactions"+query).json
-        assert tx["total"]==5
+        assert tx["total"]==4
+        assert all(not row["excluded"] for row in tx["data"])
+        included=client.get("/api/v1/finance/transactions"+query+"&include_transfers=true").json
+        assert included["total"]==5
+        assert sum(bool(row["transfer"]) for row in included["data"])==1
         assert client.get("/api/v1/finance/spending/summary?year=2026&month=99").status_code==400
