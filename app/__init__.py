@@ -77,6 +77,8 @@ def create_app(test_config=None):
     app.register_blueprint(mfp.mfp_api)
     app.register_blueprint(body_composition.pages)
     app.register_blueprint(body_composition.api)
+    from app.goals import pages as goal_pages
+    app.register_blueprint(goal_pages)
     # Initial schema is created for clean local checkouts. Alembic revisions manage later changes.
     with app.app_context():
         db.create_all()
