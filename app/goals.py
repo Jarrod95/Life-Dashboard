@@ -5,9 +5,9 @@ from math import isfinite, ceil
 from statistics import median
 import re
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
 from app import db
-from app.models import Goal
+from app.models import Goal, NetWorthSnapshot
 from app.body_composition import rows, CompositionRow
 from app.gymday import GymExercise, GymSession, GymSessionExercise, GymSet
 
@@ -29,6 +29,24 @@ SHAPES = ("Chest", "Bicep", "Bicep (flexed)", "Forearms", "Thigh", "Calf",
           "Butt", "Wrist", "Waist", "Neck", "Hips", "Shoulders")
 BODY = {"weight": ("Body weight", "kg"), "fat": ("Body fat", "%"),
         "lean": ("Lean mass", "kg"), "ffmi": ("FFMI", "kg/m²")}
+
+
+FINANCE = {"net_worth": ("Net Worth goal", "AUD"),
+           "offset": ("Savings/Offset goal", "AUD"),
+           "investing": ("Investing goal", "AUD")}
+RATIOS = {
+    "Shoulder to Waist": ("Shoulders", "Waist"),
+    "Waist to Height": ("Waist", None),
+    "Waist to Hip": ("Waist", "Hips"),
+    "Forearm to Bicep": ("Forearms", "Bicep"),
+    "Chest to Waist": ("Chest", "Waist"),
+    "Chest to Hips": ("Chest", "Hips"),
+    "Flexed Bicep to Calf": ("Bicep (flexed)", "Calf"),
+    "Thigh to Waist": ("Thigh", "Waist"),
+    "Calf to Thigh": ("Calf", "Thigh"),
+    "Flexed Bicep to Chest": ("Bicep (flexed)", "Chest"),
+    "Shoulder to Hips": ("Shoulders", "Hips"),
+}
 
 
 class GoalVersion(db.Model):
@@ -60,44 +78,132 @@ def catalog():
     out = {k: (v[0],v[1],"composition") for k,v in BODY.items()}
     out.update({k:(v[0],"kg","strength") for k,v in LIFTS.items()})
     out.update({"shape_"+norm(n):(n,"cm","shape") for n in SHAPES})
+    out.update({k:(v[0],v[1],"finance") for k,v in FINANCE.items()})
+    out.update({"ratio_"+norm(n):(n,"ratio","shape") for n in RATIOS})
     return out
 
 
 def parse_ideals(wb):
+    """Parse Dashboard columns B/D/E by section headings; also support generic headers."""
+    from app.body_composition import as_date
     name = next((n for n in wb.sheetnames if n.rstrip("!").casefold()=="dashboard"),None)
     if not name:
-        return [], []
-    ws = wb[name]
-    grid = list(ws.iter_rows(max_row=min(ws.max_row or 200,200),
-                            max_col=min(ws.max_column or 40,40),values_only=True))
-    labels = {norm(n):n for n in SHAPES}
-    labels.update(biceps="Bicep", thighs="Thigh", calves="Calf", bicepsflexed="Bicep (flexed)")
-    found = defaultdict(set)
-    for i,row in enumerate(grid):
-        hdr = [norm(v) for v in row]
-        for j,h in enumerate(hdr):
-            if h not in ("ideal","idealcm","idealmeasurement","idealmeasurements","idealbodyshape"):
-                continue
-            cols = [k for k,v in enumerate(hdr) if v in ("measurement","measurements","bodypart","metric")]
-            if not cols and j:
-                cols = [j-1]
-            for k in cols:
-                for r in grid[i+1:i+30]:
-                    label, value = labels.get(norm(r[k])),num(r[j])
-                    if label and value is not None and 0<value<=250:
-                        found[label].add(value)
-    result = [(date.today(),"shape_"+norm(n),{"name":n,"target":next(iter(v))})
-              for n,v in found.items() if len(v)==1]
-    notes = [] if result else ["Dashboard ideal layout not recognised; configure targets manually."]
-    if any(len(v)>1 for v in found.values()):
-        notes.append("Conflicting Dashboard ideal targets omitted.")
-    return result,notes
+        return [], ["Dashboard worksheet not found."]
+    ws=wb[name]
+    grid=list(ws.iter_rows(max_row=min(ws.max_row or 200,200),
+                           max_col=min(ws.max_column or 40,40),values_only=True))
+    shape_labels={norm(n):n for n in SHAPES}
+    shape_labels.update(biceps="Bicep",thighs="Thigh",calves="Calf",bicepsflexed="Bicep (flexed)")
+    ratio_labels={norm(n):n for n in RATIOS}
+    results={}
+    conflicts=set()
+    day=date.today()
+    for row in grid:
+        if len(row)>3 and norm(row[1])=="lastupdated":
+            day=as_date(row[3]) or day
+            break
+
+    def record(key,label,target,current=None,operator="increase"):
+        raw=str(target or "").strip()
+        if raw.startswith(("<",">","≤","≥")):
+            operator="decrease" if raw[0] in "<≤" else "increase"
+            target=raw.lstrip("<>≤≥= ")
+        value=num(target)
+        observed=num(current)
+        if value is None or not 0<value<=250:
+            return
+        payload=dict(name=label,target=value,current=observed,direction=operator,
+                     source="Dashboard")
+        if key in results and results[key][2]["target"]!=value:
+            conflicts.add(key)
+        else:
+            results[key]=(day,key,payload)
+
+    section=None
+    for row in grid:
+        if len(row)<5:
+            continue
+        label=norm(row[1])
+        if label=="idealbodyshape":
+            section="ratio"
+            continue
+        if label=="musclegoals":
+            section="muscle"
+            continue
+        if label in ("keyindicators","weekstosixpack"):
+            section=None
+            continue
+        if section=="ratio" and label in ratio_labels:
+            n=ratio_labels[label]
+            record("ratio_"+norm(n),n,row[3],row[4],"exact")
+        elif section=="muscle" and label in shape_labels:
+            n=shape_labels[label]
+            record("shape_"+norm(n),n,row[3],row[4],"decrease" if n=="Waist" else "increase")
+    if not results:
+        for i,row in enumerate(grid):
+            hdr=[norm(v) for v in row]
+            for j,h in enumerate(hdr):
+                if h not in ("ideal","idealcm","idealmeasurement","idealmeasurements","idealbodyshape"):
+                    continue
+                cols=[k for k,v in enumerate(hdr) if v in ("measurement","measurements","bodypart","metric")]
+                if not cols and j:
+                    cols=[j-1]
+                current_col=next((k for k,v in enumerate(hdr) if v=="current"),None)
+                for k in cols:
+                    for r in grid[i+1:i+30]:
+                        n=shape_labels.get(norm(r[k]))
+                        if n:
+                            record("shape_"+norm(n),n,r[j],r[current_col] if current_col is not None else None,
+                                   "decrease" if n=="Waist" else "increase")
+    notes=[]
+    if conflicts:
+        notes.append("Conflicting Dashboard targets omitted.")
+    values=[v for k,v in results.items() if k not in conflicts]
+    if not values:
+        notes.append("Dashboard ideal layout not recognised; check cached formula values.")
+    return values,notes
 
 
 def exercises(key):
     names = {norm(n) for n in LIFTS[key]}
     return [e for e in GymExercise.query.order_by(GymExercise.name,GymExercise.id)
             if norm(e.name) in names]
+
+
+def exercise_catalog(key):
+    preferred={e.id for e in exercises(key)}
+    return sorted(GymExercise.query.all(),key=lambda e:(e.id not in preferred,
+                  (e.name or "").casefold(),e.id))
+
+
+def proximity(current,target,direction):
+    if current is None or target is None:
+        return None
+    if direction=="exact":
+        return round(100*min(current/target,target/current),1) if current>0 and target>0 else None
+    if direction=="decrease":
+        if current<=target:
+            return 100.0
+        return round(max(0,min(100,100*target/current)),1) if target>0 and current>0 else None
+    if current>=target:
+        return 100.0
+    if target>0:
+        return round(max(0,100*current/target),1)
+    return None
+
+
+def financial_series(key,today):
+    from app.offset_projection import offset_history
+    from app.goal_finance import investment_history
+    if key=="net_worth":
+        return [(r.as_of_date,float(r.source_net_worth)) for r in
+                NetWorthSnapshot.query.filter(NetWorthSnapshot.as_of_date<=today,
+                    NetWorthSnapshot.source_net_worth.isnot(None)).order_by(NetWorthSnapshot.as_of_date)]
+    if key=="offset":
+        return [(date.fromisoformat(r["as_of"]),float(r["balance_aud"])) for r in
+                offset_history().get("history",[]) if date.fromisoformat(r["as_of"])<=today]
+    return investment_history(today)
+
 
 
 def body_value(key,source,r,settings):
@@ -122,6 +228,8 @@ def body_value(key,source,r,settings):
 
 def series(key,settings,today=None):
     today = today or date.today()
+    if key in FINANCE:
+        return financial_series(key,today)
     data = defaultdict(list)
     if key in LIFTS:
         q = db.session.query(GymSession.local_date,GymSet.weight_kg,GymSet.reps).join(
@@ -142,7 +250,14 @@ def series(key,settings,today=None):
     else:
         source = settings.get("source","manual")
         for r in rows(source,end=today):
-            v = body_value(key,source,r,settings) if key in BODY else num(r.get(catalog()[key][0]))
+            if key.startswith("ratio_"):
+                label=catalog()[key][0]
+                a,b=RATIOS[label]
+                numerator=num(r.get(a))
+                denominator=num(r.get(b)) if b else num(settings.get("height_cm"))
+                v=numerator/denominator if numerator is not None and denominator and denominator>0 else None
+            else:
+                v = body_value(key,source,r,settings) if key in BODY else num(r.get(catalog()[key][0]))
             if v is not None and 0<v<1000:
                 data[date.fromisoformat(r["date"])].append(v)
     return [(d,max(v) if key in LIFTS else median(v)) for d,v in sorted(data.items())]
@@ -168,7 +283,7 @@ def forecast(points,target,direction,key,today=None):
         return {"status":"stale"}
     if sign*(target-current)<=0:
         return {"status":"achieved","date":last.isoformat()}
-    window = 56 if key=="weight" else 84 if key in LIFTS else 180
+    window = 365 if key in FINANCE else 56 if key=="weight" else 84 if key in LIFTS else 180
     pts = [(d,v) for d,v in points if (last-d).days<=window]
     if len(pts)<4 or (pts[-1][0]-pts[0][0]).days<(21 if fast else 60):
         return {"status":"insufficient_data"}
@@ -180,7 +295,7 @@ def forecast(points,target,direction,key,today=None):
     if key=="weight":
         pace = min(pace,current*.01/7)
     days = ceil(sign*(target-current)/pace)
-    if days>365 or last+timedelta(days=days)<=today:
+    if days>(365*5 if key in FINANCE else 365) or last+timedelta(days=days)<=today:
         return {"status":"no_reliable_eta"}
     return {"status":"estimated","date":(last+timedelta(days=days)).isoformat(),
             "early":max(today,last+timedelta(days=ceil(days*.75))).isoformat(),
@@ -208,6 +323,7 @@ def snapshot(g,m,points=None):
     current = points[-1][1] if points else None
     t = float(g.target)
     pct = completion(baseline,current,t,g.direction)
+    near = pct if g.metric_key=="net_worth" and (t<=0 or (baseline is not None and baseline<0)) else proximity(current,t,g.direction)
     progress = [completion(baseline,v,t,g.direction) for d,v in points if d>=m.created_on]
     valid = [v for v in progress+[pct] if v is not None]
     sign = 1 if g.direction=="increase" else -1
@@ -215,7 +331,7 @@ def snapshot(g,m,points=None):
     return dict(id=g.id,key=g.metric_key,target=t,current=current,baseline=baseline,
                 baseline_date=baseline_date.isoformat() if baseline_date else None,
                 created=m.created_on.isoformat(),current_date=points[-1][0].isoformat() if points else None,
-                direction=g.direction,unit=g.unit,completion=pct,
+                direction=g.direction,unit=g.unit,completion=pct,proximity=near,
                 best_completion=max(valid) if valid else None,
                 first_achieved=reached[0].isoformat() if reached else None,
                 due=g.due_date.isoformat() if g.due_date else None,settings=m.settings,
@@ -253,15 +369,19 @@ def save(form):
         raise ValueError("Invalid action.")
     target = num(form.get("target"))
     direction = form.get("direction","increase")
-    if target is None or not 0<target<=1000 or (key=="fat" and target>=100):
+    if target is None or (key not in FINANCE and not 0<target<=1000) or (key in FINANCE and (abs(target)>1e10 or (key!="net_worth" and target<=0))) or (key=="fat" and target>=100):
         raise ValueError("Invalid positive target.")
     if direction not in ("increase","decrease"):
         raise ValueError("Invalid direction.")
     settings = {}
     unit = catalog()[key][1]
-    if key in LIFTS:
+    if key.startswith("ratio_") or key.startswith("shape_"):
+        raise ValueError("Edit workbook-managed ideals in Body Composition.xlsx and refresh.")
+    if key in FINANCE:
+        settings["source"]="financial_workbook"
+    elif key in LIFTS:
         eid = form.get("exercise_id")
-        if eid not in {e.id for e in exercises(key)}:
+        if not eid or db.session.get(GymExercise,eid) is None:
             raise ValueError("Select the matching GymDay exercise.")
         mode = form.get("mode","weight") if key=="pull_ups" else "weight"
         reps = num(form.get("reps",6))
@@ -296,20 +416,62 @@ def save(form):
     db.session.commit()
 
 
+def preview_height():
+    g=active("ffmi")
+    return num(version(g).settings.get("height_cm")) if g else num(current_app.config.get("GOAL_HEIGHT_CM"))
+
+
 def report():
-    groups={"composition":[],"strength":[],"shape":[]}
-    ideals={r.row_key:r.payload.get("target") for r in CompositionRow.query.filter_by(source="ideals")}
+    groups={"finance":[],"composition":[],"strength":[],"shape":[]}
+    ideals={r.row_key:r for r in CompositionRow.query.filter_by(source="ideals")}
     for key,(name,unit,group) in catalog().items():
         g=active(key)
-        item=dict(key=key,name=name,unit=unit,ideal=ideals.get(key),active=snapshot(g,version(g)) if g else None)
+        ideal=ideals.get(key)
+        item=dict(key=key,name=name,unit=unit,ideal=ideal.payload.get("target") if ideal else None,
+                  active=snapshot(g,version(g)) if g else None)
+        if group=="shape":
+            # Workbook values are authoritative and update on each sync; no DB goal
+            # mutation or automatic history revision on observation refresh.
+            if ideal:
+                payload=ideal.payload
+                current=payload.get("current")
+                settings={"source":"manual","height_cm":preview_height()}
+                pts=series(key,settings)
+                if current is None and pts:
+                    current=pts[-1][1]
+                direction=payload.get("direction","increase")
+                item.update(workbook=True,current=current,current_date=ideal.observed_on.isoformat(),
+                            proximity=proximity(current,item["ideal"],direction),direction=direction)
+            else:
+                pts=series(key,{"source":"manual","height_cm":preview_height()})
+                item.update(workbook=True,current=pts[-1][1] if pts else None,
+                            current_date=pts[-1][0].isoformat() if pts else None,proximity=None)
+            groups[group].append(item)
+            continue
         if key in LIFTS:
-            item["exercises"]=[dict(id=e.id,name=e.name,equipment=e.equipment) for e in exercises(key)]
+            candidates=exercises(key)
+            item["exercises"]=[dict(id=e.id,name=e.name,equipment=e.equipment) for e in exercise_catalog(key)]
+            if len(candidates)==1:
+                item["suggested_exercise"]=candidates[0].id
+            pts=series(key,{"exercise_id":item.get("suggested_exercise"),
+                            "mode":"reps" if key=="pull_ups" else "weight","reps":6})
+            if key=="pull_ups" and not g:
+                item["unit"]="reps"
+        elif key in FINANCE:
+            pts=series(key,{})
+        else:
+            settings={"source":"manual","height_cm":num(current_app.config.get("GOAL_HEIGHT_CM"))}
+            pts=series(key,settings)
+        item.update(current=pts[-1][1] if pts else None,current_date=pts[-1][0].isoformat() if pts else None)
+        if not g and key in ("weight","fat"):
+            item["ideal"]=num(current_app.config.get("BODY_WEIGHT_GOAL_KG" if key=="weight" else "BODY_FAT_GOAL_PCT"))
         groups[group].append(item)
     scores={}
     count=measured=achieved=0
     for k,items in groups.items():
-        values=[i["active"]["completion"] for i in items if i["active"] and i["active"]["completion"] is not None]
-        count+=sum(bool(i["active"]) for i in items)
+        values=[v for i in items if (v:=i.get("proximity") if k=="shape" else
+                i["active"].get("proximity") if i["active"] else None) is not None]
+        count+=sum(bool(i.get("ideal") is not None) if k=="shape" else bool(i["active"]) for i in items)
         measured+=len(values)
         achieved+=values.count(100)
         scores[k]=round(sum(values)/len(values),1) if values else None
