@@ -23,7 +23,7 @@ def version(key):
     if key == "gymday_latest_zip":
         from app.gymday import IMPORT_VERSION
         return IMPORT_VERSION
-    return "body-composition-2-goal-ideals"
+    return "body-composition-3-dashboard-layout"
 
 
 def _import(key, payload, force):
