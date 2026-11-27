@@ -89,9 +89,6 @@
 <link rel="stylesheet" href="{{ url_for('static',filename='css/spending.css') }}">
 <script defer src="{{ url_for('static',filename='js/spending-insights.js') }}"></script>
 {% endif %}
-{% if section == 'budget' %}
-<div class="panel"><h2>Budget source</h2><p class="empty">Budget assumptions must be verified against the original workbook input columns before figures can be trusted. No guessed annualisations have been published.</p></div>
-{% endif %}
 {% if section == 'mortgage' %}
 <div class="panel"><h2>Mortgage history and 12-month projection</h2><p class="muted" id="mortgage-status">Reading your Net Worth Tracking sheet…</p><div id="mortgage-kpis" class="metrics"></div><div class="chart-frame"><canvas id="mortgage-history-chart" role="img" aria-label="Mortgage balance history and 12-month projection" tabindex="0"></canvas></div><p id="mortgage-assumptions" class="muted"></p></div>
 <div class="panel"><h2>Mortgage & offset calculator</h2><p class="muted">Hypothetical scenario only. Enter your current balances and a <strong>monthly</strong> repayment. Annual nominal rate as a decimal (5.64% = 0.0564).</p>

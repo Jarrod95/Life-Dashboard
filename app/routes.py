@@ -48,6 +48,13 @@ def home():
 def finance_page():
     path = request.path
     section = path.split("/")[-1] if path != "/finance" else "finance"
+    if section == "budget":
+        from app.budget import comparison
+        try:
+            report = comparison(request.args.get("fiscal_year"), request.args.get("month"))
+        except ValueError as exc:
+            return error(str(exc))
+        return render_template("budget.html", section=section, title="Budget", report=report)
     return render_template("dashboard.html", section=section, title=section.replace("-", " ").title(),
                            data=summary(), spending=spending(), networth=timeline(),
                            valuations=latest_valuations(),
@@ -280,7 +287,16 @@ def budget_api():
                               fiscal_year=b.fiscal_year, base=money(b.base_amount),
                               monthly=money(b.monthly_equivalent),
                               annual=money(b.annual_equivalent)) for b in query.all()],
-                   warning="Source budget frequency mapping is pending workbook validation")
+                   warning="Annual plan from Budget column G; monthly amounts derived from annual values")
+
+
+@api.get("/finance/budget/comparison")
+def budget_comparison_api():
+    from app.budget import comparison
+    try:
+        return jsonify(data=comparison(request.args.get("fiscal_year"), request.args.get("month")))
+    except ValueError as exc:
+        return error(str(exc))
 
 
 @api.get("/finance/mortgage")
