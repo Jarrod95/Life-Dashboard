@@ -44,6 +44,7 @@ def create_app(test_config=None):
         SOURCE_WORKBOOK=os.getenv("LIFE_FINANCE_XLSX_PATH", ""),
         BODY_COMPOSITION_XLSX_PATH=os.getenv("LIFE_BODY_COMPOSITION_XLSX_PATH", ""),
         BODY_COMPOSITION_IMPORT_ON_STARTUP=os.getenv("LIFE_BODY_COMPOSITION_IMPORT_ON_STARTUP", "true").lower() == "true",
+        GOAL_HEIGHT_CM=os.getenv("LIFE_GOAL_HEIGHT_CM", ""),
         BODY_WEIGHT_GOAL_KG=os.getenv("BODY_WEIGHT_GOAL_KG", "84"),
         BODY_FAT_GOAL_PCT=os.getenv("BODY_FAT_GOAL_PCT", "8"),
         GYMDAY_EXPORT_DIR=os.getenv("LIFE_GYMDAY_EXPORT_DIR", ""),
