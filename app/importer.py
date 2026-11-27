@@ -11,7 +11,7 @@ from app import db
 from app.models import (ImportRun, SourceRecord, Transaction, Account, Category,
                         NetWorthSnapshot, AccountValuation)
 
-IMPORTER_VERSION = "3-westpac-payroll-credit"
+IMPORTER_VERSION = "4-budget-annual-plan"
 WESTPAC_SHEET = "Transactions_Westpac_All!"
 YEAR_SHEET = re.compile(r"^Transactions_(\d{4})_NAB$", re.I)
 ALIASES = {
@@ -222,11 +222,8 @@ def snapshot_rows(wb):
 
 
 def budget_rows(wb):
-    # Budget layouts vary. Preserve text rows and numeric input cells without assuming
-    # the workbook's derived annual/monthly formula outputs are independent inputs.
-    if "Budget" not in wb:
-        return [], ["Budget sheet missing"]
-    return [], ["Budget import requires source-specific frequency column verification; no inferred amounts imported"]
+    from app.budget import parse_budget
+    return parse_budget(wb)
 
 
 def profile_bytes(blob, filename="Financial Dashboard.xlsx"):
@@ -235,7 +232,7 @@ def profile_bytes(blob, filename="Financial Dashboard.xlsx"):
     cached = load_workbook(io.BytesIO(blob), data_only=True, read_only=True)
     records, warnings = transaction_rows(cached)
     snapshots, nw_warnings = snapshot_rows(cached)
-    _, budget_warnings = budget_rows(cached)
+    budgets, budget_warnings = budget_rows(cached)
     warnings.extend(nw_warnings + budget_warnings)
     sheets = [dict(name=s.title, rows=s.max_row, columns=s.max_column) for s in cached]
     missing = [] if records else ["No valid bank transactions found"]
@@ -244,13 +241,14 @@ def profile_bytes(blob, filename="Financial Dashboard.xlsx"):
     warnings += missing
     return dict(sha256=digest, filename=Path(filename).name, bytes=len(blob),
                 sheets=sheets, transactions=records, snapshots=snapshots,
-                warnings=warnings, formula_workbook=formula)
+                warnings=warnings, budgets=budgets, formula_workbook=formula)
 
 
 def public_preview(profile):
     return dict(filename=profile["filename"], sha256=profile["sha256"],
                 bytes=profile["bytes"], sheets=profile["sheets"],
                 transactions=len(profile["transactions"]), snapshots=len(profile["snapshots"]),
+                budgets=len(profile["budgets"]),
                 warnings=profile["warnings"][:100])
 
 
@@ -265,7 +263,7 @@ def get_or_create(model, **criteria):
 
 def import_bytes(blob, filename, force=False):
     profile = profile_bytes(blob, filename)
-    if not profile["transactions"] and not profile["snapshots"]:
+    if not profile["transactions"] and not profile["snapshots"] and not profile["budgets"]:
         raise ValueError("No usable financial data found")
     prior = (ImportRun.query.filter_by(sha256=profile["sha256"], status="completed")
              .order_by(ImportRun.id.desc()).first())
@@ -363,7 +361,10 @@ def import_bytes(blob, filename, force=False):
                     value.source_reference = (
                         f"Net Worth Tracking!{snap['column']}:{entry['row']}"
                     )
-        run.counts = {"created": created, "updated": updated, "snapshots": len(profile["snapshots"])}
+        from app.budget import save_budget
+        save_budget(profile["budgets"], run.id)
+        run.counts = {"created": created, "updated": updated, "snapshots": len(profile["snapshots"]),
+                      "budgets": len(profile["budgets"])}
         run.status = "completed"
         run.completed_at = datetime.now(timezone.utc)
         db.session.commit()

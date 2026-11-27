@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+{% macro aud(v) -%}
+{{ '—' if v is none else ('$' ~ '{:,.2f}'.format(v|float)) }}
+{%- endmacro %}
+{% macro variance(v) -%}
+<span class="{{ 'budget-good' if v is not none and v|float >= 0 else 'budget-bad' if v is not none else '' }}">{{ aud(v) }}</span>
+{%- endmacro %}
+{% macro metric(label, value, note) -%}
+<article class="metric"><span>{{ label }}</span><strong>{{ aud(value) }}</strong><small>{{ note }}</small></article>
+{%- endmacro %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static',filename='css/budget.css') }}">
+<div class="page-heading"><div><p class="eyebrow">FINANCE · CASH FLOW</p><h1>Budget</h1><p class="muted">Compare the current workbook plan with observed spending and savings capacity.</p></div></div>
+<section class="panel">
+<form method="get" class="filters">
+<label>Financial year<select name="fiscal_year">
+{% for y in report.years %}<option value="{{ y }}" {% if y == report.year %}selected{% endif %}>{{ y }}–{{ y+1 }}</option>{% endfor %}
+{% if report.year not in report.years %}<option value="{{ report.year }}" selected>{{ report.year }}–{{ report.year+1 }}</option>{% endif %}
+</select></label>
+<label>Period<select name="month"><option value="all">Financial year to date</option>
+{% for m in [7,8,9,10,11,12,1,2,3,4,5,6] %}<option value="{{ m }}" {% if report.month == m %}selected{% endif %}>{{ ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m-1] }}</option>{% endfor %}
+</select></label><button type="submit">Apply</button></form>
+{% if report.status == 'ok' %}<p class="muted">Plan: FY {{ report.year }}–{{ report.year+1 }} · import #{{ report.source_import or 'unknown' }} · Actual coverage: {{ report.covered_from or 'unavailable' }} to {{ report.covered_to or 'unavailable' }}.</p>{% endif %}
+</section>
+{% if report.status == 'ok' %}
+{% set p = report.plan %}{% set a = report.actual %}
+<section class="metrics" aria-label="Monthly plan">
+{{ metric('Monthly net income',p.monthly_income,'Current plan') }}
+{{ metric('Monthly expenses',p.monthly_expenses,'Personal + investment property') }}
+{{ metric('Monthly surplus',p.monthly_surplus,'Before savings allocations') }}
+<article class="metric"><span>Potential savings rate</span><strong>{{ p.savings_rate ~ '%' if p.savings_rate is not none else '—' }}</strong><small>Annual surplus / net income</small></article>
+</section>
+<section class="panel"><h2>Actual vs budget</h2><p class="muted">Budget prorated over observed dates. Positive variance is favourable. All amounts AUD.</p>
+<div class="metrics">
+{{ metric('Budget to date',a.target,'Selected period / coverage') }}
+{{ metric('Observed expenses',a.spending,'Matched + unallocated; excludes BNPL') }}
+<article class="metric"><span>Expense variance</span><strong>{{ variance(a.variance) }}</strong><small>Budget less observed expenses</small></article>
+{{ metric('Monthly spending pace',a.run_rate,'Observed spend / covered months') }}
+{{ metric('Observed income',a.income,'Classified income') }}
+{{ metric('Planned income to date',a.target_income,'Prorated net income') }}
+{{ metric('Observed net cash flow',a.net,'Before excluded/BNPL movements') }}
+{{ metric('Unallocated expenses',a.unallocated,'Needs mapping or is outside the plan') }}
+</div>
+</section>
+<section class="panel"><h2>Monthly spending vs plan</h2><p class="muted">Each month uses the same current plan; the last covered month may be partial.</p>
+{% if report.history %}
+{% set maxv = [report.history|map(attribute='target')|map('float')|max, report.history|map(attribute='actual')|map('float')|max, 1]|max %}
+<div class="budget-legend"><span class="budget-plan">Budget</span><span class="budget-actual">Actual</span></div>
+{% for row in report.history %}
+<div class="budget-chart-row"><strong>{{ row.month }}</strong><div><meter min="0" max="{{ maxv }}" value="{{ [row.target|float,0]|max }}" class="budget-plan" aria-label="{{ row.month }} budget {{ aud(row.target) }}"></meter><meter min="0" max="{{ maxv }}" value="{{ [row.actual|float,0]|max }}" class="budget-actual" aria-label="{{ row.month }} actual {{ aud(row.actual) }}"></meter></div><div class="budget-chart-values">{{ aud(row.target) }}<br>{{ aud(row.actual) }}</div></div>
+{% endfor %}{% else %}<p class="empty">No covered months.</p>{% endif %}
+</section>
+<section class="panel"><h2>Budget line breakdown</h2><p class="muted">A dash means no matched transactions. Expense variance = target − actual; income variance = actual − target.</p>
+<div class="table-scroll"><table><thead><tr><th>Line</th><th>Annual</th><th>Monthly</th><th>Weekly</th><th>Period target</th><th>Actual</th><th>Variance</th><th>Used / earned</th><th>Matches</th></tr></thead><tbody>
+{% for kind, label in [('income','Net income'),('expense','Personal expenses'),('property_expense','Investment property')] %}
+<tr><th colspan="9">{{ label }}</th></tr>
+{% for line in report.lines if line.kind == kind %}
+<tr><td>{{ line.name }}<br><small class="muted">{{ line.source }}</small></td><td>{{ aud(line.annual) }}</td><td>{{ aud(line.monthly) }}</td><td>{{ aud(line.weekly) }}</td><td>{{ aud(line.target) }}</td><td>{{ aud(line.actual) }}</td><td>{{ variance(line.variance) }}</td><td>{{ line.utilization ~ '%' if line.utilization is not none else '—' }}</td><td>{{ line.matched_count }}</td></tr>
+{% endfor %}{% endfor %}
+</tbody></table></div></section>
+<section class="panel"><h2>Savings capacity</h2><p class="muted">Targets are percentages of annual net income, converted to monthly amounts. Negative headroom means the target exceeds the current plan surplus.</p>
+<div class="metrics">{{ metric('Annual net income',p.annual_income,'Workbook net income') }}{{ metric('Annual expenses',p.annual_expenses,'Workbook expenses') }}{{ metric('Annual surplus',p.annual_surplus,'Before savings allocation') }}{{ metric('Daily period variance',a.daily_remaining,'Observed expense variance / covered days') }}</div>
+<table><thead><tr><th>Target</th><th>Monthly savings goal</th><th>Monthly headroom after goal</th></tr></thead><tbody>{% for s in p.scenarios %}<tr><td>{{ s.percent }}%</td><td>{{ aud(s.monthly_target) }}</td><td>{{ variance(s.monthly_remaining) }}</td></tr>{% endfor %}</tbody></table>
+</section>
+<section class="panel"><h2>Unallocated spending</h2><p class="muted">These categories are included in observed expenses but not assigned to a budget line. Review the <a href="/finance/spending">Spending page</a> for details.</p>
+<table><thead><tr><th>Category</th><th>Net expense</th></tr></thead><tbody>{% for row in report.unallocated %}<tr><td>{{ row.category }}</td><td>{{ aud(row.amount) }}</td></tr>{% else %}<tr><td colspan="2">No observed unallocated expenses.</td></tr>{% endfor %}</tbody></table>
+<h3>Reconciliation</h3><table><tbody><tr><th>Matched expenses</th><td>{{ aud(a.matched) }}</td></tr><tr><th>BNPL net payments (separate)</th><td>{{ aud(a.bnpl) }}</td></tr><tr><th>Excluded debits (transfers / interest)</th><td>{{ aud(a.excluded_debits) }}</td></tr><tr><th>Other classified income</th><td>{{ aud(a.other_income) }}</td></tr><tr><th>Other credits not treated as refunds or income</th><td>{{ aud(a.other_credits) }}</td></tr></tbody></table>
+</section>
+{% endif %}
+<section class="panel"><h2>Data notes</h2>{% for warning in report.warnings %}<p class="muted">{{ warning }}</p>{% endfor %}</section>
+{% endblock %}
