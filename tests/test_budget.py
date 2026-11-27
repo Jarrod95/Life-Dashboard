@@ -50,3 +50,44 @@ def test_mortgage_and_transfer_reconciliation():
     assert actual_key(tx("-20","merchant"),"Groceries") == "groceries"
     assert actual_key(tx("-20","Afterpay"),"Other shopping") == "bnpl"
     assert actual_key(tx("100","DEPOSIT-SALARY"),"DEP") == "salary"
+
+
+def test_import_and_comparison_integration(tmp_path):
+    from io import BytesIO
+    from app import create_app
+    from app.importer import import_bytes
+    from app.budget import comparison
+    from app.models import BudgetLine
+
+    app = create_app({"TESTING": True, "WTF_CSRF_ENABLED": False,
+                      "SQLALCHEMY_DATABASE_URI": "sqlite:///" + str(tmp_path / "budget.sqlite")})
+    wb = fixture()
+    txs = wb.create_sheet("Transactions_2026_NAB")
+    txs.append(["Date", "Amount", "Account Number", "Transaction Type",
+                "Transaction Details", "Category", "Merchant Name"])
+    txs.append([date(2026, 7, 1), -50, "test", "purchase", "Food", "Groceries", "Grocer"])
+    txs.append([date(2026, 7, 15), -20, "test", "purchase", "Meal", "Dining", "Cafe"])
+    txs.append([date(2026, 7, 31), 5000, "test", "salary", "Salary", "Income", "Employer"])
+    txs.append([date(2026, 7, 31), -100, "test", "transfer", "Internal transfer", "Transfers", "Internal"])
+    output = BytesIO()
+    wb.save(output)
+    with app.app_context():
+        first = import_bytes(output.getvalue(), "synthetic.xlsx")
+        assert first["counts"]["budgets"] == 3
+        import_bytes(output.getvalue(), "synthetic.xlsx", force=True)
+        assert BudgetLine.query.count() == 3
+        report = comparison(2026, 7, today=date(2026, 8, 1))
+        assert report["actual"]["target"] == "2500.00"
+        assert report["actual"]["spending"] == "70.00"
+        assert report["actual"]["unallocated"] == "20.00"
+        assert report["actual"]["income"] == "5000.00"
+        assert report["actual"]["excluded_debits"] == "100.00"
+        assert report["plan"]["monthly_surplus"] == "2500.00"
+        mortgage = next(x for x in report["lines"] if x["name"] == "Mortgage")
+        assert mortgage["actual"] is None
+        future = comparison(2026, 8, today=date(2026, 8, 1))
+        assert future["actual"]["spending"] is None
+    client = app.test_client()
+    assert client.get("/finance/budget?fiscal_year=2026&month=7").status_code == 200
+    assert client.get("/api/v1/finance/budget/comparison?fiscal_year=2026&month=7").status_code == 200
+    assert client.get("/api/v1/finance/budget/comparison?month=13").status_code == 400
