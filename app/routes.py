@@ -5,7 +5,7 @@ from pathlib import Path
 from flask import Blueprint, render_template, jsonify, request, current_app
 from app import db
 from app.models import (ImportRun, NetWorthSnapshot, Transaction, Category, TransactionAudit,
-                        BudgetLine, Goal)
+                        BudgetLine)
 from app.finance import (summary, timeline, spending, transaction_query, transaction_json,
                          latest_valuations, mortgage_scenario, money, spending_categories, transaction_years, income_audit)
 from app.importer import profile_bytes, public_preview, import_bytes
@@ -65,7 +65,6 @@ def finance_page():
 
 @site.get("/fitness")
 @site.get("/health-dashboard")
-@site.get("/goals")
 def scaffold():
     module = request.path.strip("/")
     return render_template("scaffold.html", section=module, title=module.replace("-", " ").title())
@@ -392,6 +391,5 @@ def health_api():
 
 @api.get("/goals")
 def goals_api():
-    return jsonify(data=[dict(id=x.id, module=x.module, metric=x.metric_key,
-                              target=str(x.target), current=str(x.current) if x.current else None,
-                              unit=x.unit, status=x.status) for x in Goal.query.all()])
+    from app.goals import report
+    return jsonify(data=report())
