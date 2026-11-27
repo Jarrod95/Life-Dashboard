@@ -283,7 +283,7 @@ def forecast(points,target,direction,key,today=None):
         return {"status":"stale"}
     if sign*(target-current)<=0:
         return {"status":"achieved","date":last.isoformat()}
-    window = 56 if key=="weight" else 84 if key in LIFTS else 180
+    window = 365 if key in FINANCE else 56 if key=="weight" else 84 if key in LIFTS else 180
     pts = [(d,v) for d,v in points if (last-d).days<=window]
     if len(pts)<4 or (pts[-1][0]-pts[0][0]).days<(21 if fast else 60):
         return {"status":"insufficient_data"}
@@ -295,7 +295,7 @@ def forecast(points,target,direction,key,today=None):
     if key=="weight":
         pace = min(pace,current*.01/7)
     days = ceil(sign*(target-current)/pace)
-    if days>365 or last+timedelta(days=days)<=today:
+    if days>(365*5 if key in FINANCE else 365) or last+timedelta(days=days)<=today:
         return {"status":"no_reliable_eta"}
     return {"status":"estimated","date":(last+timedelta(days=days)).isoformat(),
             "early":max(today,last+timedelta(days=ceil(days*.75))).isoformat(),
@@ -323,7 +323,7 @@ def snapshot(g,m,points=None):
     current = points[-1][1] if points else None
     t = float(g.target)
     pct = completion(baseline,current,t,g.direction)
-    near = proximity(current,t,g.direction)
+    near = pct if g.metric_key=="net_worth" and (t<=0 or (baseline is not None and baseline<0)) else proximity(current,t,g.direction)
     progress = [completion(baseline,v,t,g.direction) for d,v in points if d>=m.created_on]
     valid = [v for v in progress+[pct] if v is not None]
     sign = 1 if g.direction=="increase" else -1
@@ -416,6 +416,11 @@ def save(form):
     db.session.commit()
 
 
+def preview_height():
+    g=active("ffmi")
+    return num(version(g).settings.get("height_cm")) if g else num(current_app.config.get("GOAL_HEIGHT_CM"))
+
+
 def report():
     groups={"finance":[],"composition":[],"strength":[],"shape":[]}
     ideals={r.row_key:r for r in CompositionRow.query.filter_by(source="ideals")}
@@ -430,7 +435,7 @@ def report():
             if ideal:
                 payload=ideal.payload
                 current=payload.get("current")
-                settings={"source":"manual","height_cm":num(current_app.config.get("GOAL_HEIGHT_CM"))}
+                settings={"source":"manual","height_cm":preview_height()}
                 pts=series(key,settings)
                 if current is None and pts:
                     current=pts[-1][1]
@@ -438,7 +443,7 @@ def report():
                 item.update(workbook=True,current=current,current_date=ideal.observed_on.isoformat(),
                             proximity=proximity(current,item["ideal"],direction),direction=direction)
             else:
-                pts=series(key,{"source":"manual","height_cm":num(current_app.config.get("GOAL_HEIGHT_CM"))})
+                pts=series(key,{"source":"manual","height_cm":preview_height()})
                 item.update(workbook=True,current=pts[-1][1] if pts else None,
                             current_date=pts[-1][0].isoformat() if pts else None,proximity=None)
             groups[group].append(item)
