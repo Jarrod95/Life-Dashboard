@@ -58,3 +58,50 @@ def test_version_history(tmp_path):
         assert r["history"][0]["outcome"] == "revised"
         assert r["history"][0]["completion"] == 40
     assert app.test_client().get("/goals").status_code == 200
+
+
+def test_real_dashboard_sections():
+    from app.goals import proximity
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Dashboard!"
+    ws["B3"] = "Last updated:"
+    ws["D3"] = date(2026, 11, 20)
+    ws["B11"] = "Ideal Body Shape"
+    ws["B12"], ws["D12"], ws["E12"] = "Ratio", "Ideal", "Current"
+    ws["B13"], ws["D13"], ws["E13"] = "Shoulder to Waist", 1.6, 1.51
+    ws["B15"], ws["D15"], ws["E15"] = "Waist to Hip", "<0.9", .91
+    ws["B27"], ws["D27"], ws["E27"] = "Muscle Goals", "Goal", "Current"
+    ws["B28"], ws["D28"], ws["E28"] = "Chest", 110, 106.2
+    rows, warnings = parse_ideals(wb)
+    assert not warnings
+    data = {k: v for _, k, v in rows}
+    assert data["ratio_shouldertowaist"]["direction"] == "exact"
+    assert data["ratio_waisttohip"]["direction"] == "decrease"
+    assert data["shape_chest"]["target"] == 110
+    assert data["shape_chest"]["current"] == 106.2
+    assert proximity(120,150,"increase") == 80
+    assert proximity(87.6,84,"decrease") == 95.9
+    assert proximity(1.8,1.6,"exact") == 88.9
+
+
+def test_unconfigured_observations_and_financial_targets(tmp_path):
+    from app import create_app, db
+    from app.body_composition import CompositionRow
+    from app.models import NetWorthSnapshot
+    from app.goals import report, save
+    app = create_app({"TESTING": True, "WTF_CSRF_ENABLED": False,
+                      "SOURCE_WORKBOOK": "", "LIFE_DATA_SOURCE": "local",
+                      "SQLALCHEMY_DATABASE_URI": "sqlite:///" + str(tmp_path/"goals.sqlite")})
+    with app.app_context():
+        today = date.today()
+        db.session.add(CompositionRow(source="manual", observed_on=today,
+                       row_key="first", payload={"Weight":87.6}))
+        db.session.add(NetWorthSnapshot(as_of_date=today, source_net_worth=-180000))
+        db.session.commit()
+        r = report()
+        assert r["groups"]["composition"][0]["current"] == 87.6
+        assert r["groups"]["finance"][0]["current"] == -180000
+        save({"key":"net_worth","target":"-100000","direction":"increase"})
+        assert report()["groups"]["finance"][0]["active"]["target"] == -100000
+    assert app.test_client().get("/goals").status_code == 200
