@@ -118,6 +118,11 @@ def parse_workbook(path):
                 keys.add(key)
                 records.append((day, key, payload))
             result[kind] = records
+        from app.goals import parse_ideals
+        ideals, notes = parse_ideals(workbook)
+        if ideals:
+            result["ideals"] = ideals
+        warnings.extend(notes)
         return result, warnings
     finally:
         workbook.close()
